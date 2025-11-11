@@ -1,0 +1,33 @@
+[package]
+name = "projectionlab-mcp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# MCP server framework with HTTP streamable transport
+rmcp = { version = "0.8", features = [
+    "server",
+    "transport-streamable-http-server",
+] }
+
+# Browser automation with Firefox
+thirtyfour = "0.33"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+
+# HTTP server framework
+axum = "0.8"
+
+# Serialization and JSON schema
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1.0"
+
+# Error handling
+anyhow = "1"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
