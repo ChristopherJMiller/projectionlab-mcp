@@ -2,21 +2,29 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use std::time::Duration;
 use thirtyfour::prelude::*;
+use tokio::process::{Child, Command};
 use tracing::{info, warn};
 
 const PROJECTIONLAB_URL: &str = "https://app.projectionlab.com";
 const PLUGINS_SETTINGS_URL: &str = "https://app.projectionlab.com/settings/plugins";
 const LOGIN_WAIT_TIMEOUT_SECS: u64 = 300; // 5 minutes for user to log in
+const GECKODRIVER_URL: &str = "http://localhost:4444";
+const GECKODRIVER_PORT: u16 = 4444;
 
 /// Manages the Firefox browser session for interacting with ProjectionLab
 pub struct BrowserSession {
     driver: WebDriver,
     api_key: Option<String>,
+    /// Optional GeckoDriver child process (if we started it)
+    geckodriver_process: Option<Child>,
 }
 
 impl BrowserSession {
     /// Creates a new browser session by launching Firefox and waiting for user login
     pub async fn new() -> Result<Self> {
+        // Start GeckoDriver if it's not already running
+        let geckodriver_process = Self::ensure_geckodriver_running().await?;
+
         info!("Launching Firefox browser...");
 
         // Configure Firefox capabilities
@@ -26,21 +34,68 @@ impl BrowserSession {
         // To enable headless, you would call: caps.set_headless()?;
 
         // Connect to GeckoDriver
-        let driver = WebDriver::new("http://localhost:4444", caps)
+        let driver = WebDriver::new(GECKODRIVER_URL, caps)
             .await
-            .context("Failed to connect to GeckoDriver. Is it running?")?;
+            .context("Failed to connect to GeckoDriver")?;
 
         info!("Firefox launched successfully");
 
         let mut session = Self {
             driver,
             api_key: None,
+            geckodriver_process,
         };
 
         // Navigate to ProjectionLab and wait for user to log in
         session.initialize_session().await?;
 
         Ok(session)
+    }
+
+    /// Ensures GeckoDriver is running, starting it if necessary
+    /// Returns Some(Child) if we started it, None if it was already running
+    async fn ensure_geckodriver_running() -> Result<Option<Child>> {
+        // Check if GeckoDriver is already running by attempting to connect
+        if Self::is_geckodriver_running().await {
+            info!("GeckoDriver is already running on port {}", GECKODRIVER_PORT);
+            return Ok(None);
+        }
+
+        info!("Starting GeckoDriver on port {}...", GECKODRIVER_PORT);
+
+        // Start GeckoDriver as a child process
+        let child = Command::new("geckodriver")
+            .arg("--port")
+            .arg(GECKODRIVER_PORT.to_string())
+            .stdout(std::process::Stdio::null()) // Suppress stdout
+            .stderr(std::process::Stdio::null()) // Suppress stderr
+            .spawn()
+            .context("Failed to start GeckoDriver. Is it installed?")?;
+
+        info!("GeckoDriver started successfully (PID: {:?})", child.id());
+
+        // Give GeckoDriver a moment to start up
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Verify it's running
+        for i in 0..10 {
+            if Self::is_geckodriver_running().await {
+                info!("GeckoDriver is ready");
+                return Ok(Some(child));
+            }
+            if i < 9 {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        }
+
+        anyhow::bail!("GeckoDriver started but didn't become ready in time")
+    }
+
+    /// Checks if GeckoDriver is running by attempting a simple TCP connection
+    async fn is_geckodriver_running() -> bool {
+        tokio::net::TcpStream::connect(("127.0.0.1", GECKODRIVER_PORT))
+            .await
+            .is_ok()
     }
 
     /// Initializes the session by navigating to ProjectionLab and retrieving the API key
@@ -70,7 +125,7 @@ impl BrowserSession {
         Ok(())
     }
 
-    /// Waits for the user to log in by periodically checking if we can access authenticated pages
+    /// Waits for the user to log in by periodically checking the URL without navigating away
     async fn wait_for_login(&self) -> Result<()> {
         let start = std::time::Instant::now();
         let timeout = Duration::from_secs(LOGIN_WAIT_TIMEOUT_SECS);
@@ -81,24 +136,30 @@ impl BrowserSession {
                 anyhow::bail!("Login timeout: User did not log in within {} seconds", LOGIN_WAIT_TIMEOUT_SECS);
             }
 
-            // Try to navigate to settings page to check if logged in
-            match self.driver.goto(PLUGINS_SETTINGS_URL).await {
-                Ok(_) => {
-                    // Check if we're actually on the settings page or redirected to login
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    let current_url = self.driver.current_url().await?;
+            // Check current URL without navigating
+            match self.driver.current_url().await {
+                Ok(url) => {
+                    let url_str = url.as_str();
 
-                    if current_url.as_str().contains("/settings/plugins") {
-                        // Successfully on settings page, user is logged in
+                    // Check if we're on a logged-in page (not on login/auth pages)
+                    // Look for indicators that we're logged in:
+                    // - Not on /login or /auth pages
+                    // - On app.projectionlab.com (not redirected elsewhere)
+                    if url_str.contains("app.projectionlab.com")
+                        && !url_str.contains("/login")
+                        && !url_str.contains("/auth")
+                        && !url_str.contains("/signin") {
+
+                        info!("Login detected - user is on: {}", url_str);
                         return Ok(());
                     }
                 }
                 Err(e) => {
-                    warn!("Error checking login status: {}", e);
+                    warn!("Error checking current URL: {}", e);
                 }
             }
 
-            // Wait before trying again
+            // Wait before checking again (don't navigate, just wait)
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
     }
@@ -206,10 +267,21 @@ impl BrowserSession {
         Ok(result.json().clone())
     }
 
-    /// Closes the browser session
-    pub async fn close(self) -> Result<()> {
-        info!("Closing browser session...");
-        self.driver.quit().await?;
-        Ok(())
+}
+
+impl Drop for BrowserSession {
+    fn drop(&mut self) {
+        // If we started GeckoDriver, kill it when BrowserSession is dropped
+        if let Some(child) = &mut self.geckodriver_process {
+            if let Some(pid) = child.id() {
+                info!("BrowserSession dropped - stopping GeckoDriver (PID: {})...", pid);
+                // We can't await in Drop, so start_kill() initiates termination without waiting
+                if let Err(e) = child.start_kill() {
+                    warn!("Error killing GeckoDriver: {}", e);
+                } else {
+                    info!("GeckoDriver termination initiated");
+                }
+            }
+        }
     }
 }
