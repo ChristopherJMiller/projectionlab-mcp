@@ -1,0 +1,3619 @@
+{
+    "$schema": "http://json-schema.org/draft-06/schema#",
+    "$ref": "#/definitions/Schema",
+    "definitions": {
+        "Schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/SchemaMeta"
+                },
+                "today": {
+                    "$ref": "#/definitions/StartingConditionsClass"
+                },
+                "plans": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PlanElement"
+                    }
+                },
+                "settings": {
+                    "$ref": "#/definitions/Settings"
+                },
+                "progress": {
+                    "$ref": "#/definitions/SchemaProgress"
+                }
+            },
+            "required": [
+                "meta",
+                "plans",
+                "progress",
+                "settings",
+                "today"
+            ],
+            "title": "Schema"
+        },
+        "SchemaMeta": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "version": {
+                    "type": "string"
+                },
+                "lastUpdated": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "lastUpdated",
+                "version"
+            ],
+            "title": "SchemaMeta"
+        },
+        "PlanElement": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "expenses": {
+                    "$ref": "#/definitions/Expenses"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "priorities": {
+                    "$ref": "#/definitions/Priorities"
+                },
+                "startingConditionsType": {
+                    "type": "string"
+                },
+                "assets": {
+                    "$ref": "#/definitions/Assets"
+                },
+                "income": {
+                    "$ref": "#/definitions/PlanIncome"
+                },
+                "milestones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Milestone"
+                    }
+                },
+                "simKey": {
+                    "type": "integer"
+                },
+                "schema": {
+                    "type": "number"
+                },
+                "hasNotes": {
+                    "type": "boolean"
+                },
+                "withdrawalStrategy": {
+                    "$ref": "#/definitions/WithdrawalStrategy"
+                },
+                "lastUpdated": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "computedMilestones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ComputedMilestone"
+                    }
+                },
+                "accounts": {
+                    "$ref": "#/definitions/Accounts"
+                },
+                "startingConditions": {
+                    "$ref": "#/definitions/StartingConditionsClass"
+                },
+                "initialized": {
+                    "type": "boolean"
+                },
+                "variables": {
+                    "$ref": "#/definitions/Variables"
+                },
+                "montecarlo": {
+                    "$ref": "#/definitions/PlanMontecarlo"
+                },
+                "meta": {
+                    "$ref": "#/definitions/PlanMeta"
+                }
+            },
+            "required": [
+                "accounts",
+                "active",
+                "assets",
+                "computedMilestones",
+                "expenses",
+                "hasNotes",
+                "icon",
+                "id",
+                "income",
+                "initialized",
+                "lastUpdated",
+                "meta",
+                "milestones",
+                "montecarlo",
+                "name",
+                "priorities",
+                "schema",
+                "simKey",
+                "startingConditions",
+                "startingConditionsType",
+                "variables",
+                "withdrawalStrategy"
+            ],
+            "title": "PlanElement"
+        },
+        "Accounts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/InvestmentAccount"
+                    }
+                }
+            },
+            "required": [
+                "events"
+            ],
+            "title": "Accounts"
+        },
+        "InvestmentAccount": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "dividendRate": {
+                    "type": "integer"
+                },
+                "investmentGrowthRate": {
+                    "type": "number"
+                },
+                "repurpose": {
+                    "type": "boolean"
+                },
+                "color": {
+                    "$ref": "#/definitions/Color"
+                },
+                "planPath": {
+                    "type": "string"
+                },
+                "accountId": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "investmentGrowthType": {
+                    "$ref": "#/definitions/AssumptionsMode"
+                },
+                "liquid": {
+                    "type": "boolean"
+                },
+                "balance": {
+                    "type": "integer"
+                },
+                "type": {
+                    "$ref": "#/definitions/SavingsAccountType"
+                },
+                "dividendType": {
+                    "$ref": "#/definitions/BondAllocationType"
+                },
+                "title": {
+                    "$ref": "#/definitions/Title"
+                },
+                "isPassiveIncome": {
+                    "type": "boolean"
+                },
+                "owner": {
+                    "$ref": "#/definitions/Owner"
+                },
+                "withdraw": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "icon": {
+                    "$ref": "#/definitions/Icon"
+                },
+                "withdrawAge": {
+                    "$ref": "#/definitions/Start"
+                },
+                "persistent": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "number"
+                },
+                "yearlyFee": {
+                    "type": "integer"
+                },
+                "dividendTaxType": {
+                    "$ref": "#/definitions/BondAllocationType"
+                },
+                "costBasis": {
+                    "type": "number"
+                },
+                "yearlyFeeType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "dividendsArePassiveIncome": {
+                    "type": "boolean"
+                },
+                "dividendReinvestment": {
+                    "type": "boolean"
+                },
+                "subtitle": {
+                    "type": "string"
+                },
+                "rmdType": {
+                    "type": "string"
+                },
+                "EWAge": {
+                    "type": "integer"
+                },
+                "hasEWPenalty": {
+                    "type": "boolean"
+                },
+                "EWPenaltyRate": {
+                    "type": "integer"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "withdrawContribsFree": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "balance",
+                "color",
+                "dividendRate",
+                "dividendType",
+                "icon",
+                "id",
+                "investmentGrowthRate",
+                "investmentGrowthType",
+                "isPassiveIncome",
+                "liquid",
+                "name",
+                "owner",
+                "title",
+                "type",
+                "withdraw",
+                "withdrawAge"
+            ],
+            "title": "InvestmentAccount"
+        },
+        "Start": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "modifier": {
+                    "$ref": "#/definitions/SplitPointModifierEnum"
+                },
+                "value": {
+                    "$ref": "#/definitions/StartValue"
+                },
+                "type": {
+                    "$ref": "#/definitions/StartType"
+                }
+            },
+            "required": [
+                "type",
+                "value"
+            ],
+            "title": "Start"
+        },
+        "Assets": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/AssetsEvent"
+                    }
+                }
+            },
+            "required": [
+                "events"
+            ],
+            "title": "Assets"
+        },
+        "AssetsEvent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "repeat": {
+                    "type": "boolean"
+                },
+                "taxRateType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "compounding": {
+                    "type": "string"
+                },
+                "end": {
+                    "$ref": "#/definitions/Start"
+                },
+                "insuranceRateType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "excludeLoanFromLNW": {
+                    "type": "boolean"
+                },
+                "planPath": {
+                    "type": "string"
+                },
+                "monthlyPayment": {
+                    "type": "integer"
+                },
+                "interestType": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/Owner"
+                },
+                "fundWithAccounts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "uuid"
+                    }
+                },
+                "interestRate": {
+                    "type": "number"
+                },
+                "maintenanceRate": {
+                    "type": "integer"
+                },
+                "initialValue": {
+                    "type": "integer"
+                },
+                "key": {
+                    "type": "number"
+                },
+                "amountType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "maintenanceRateType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "downPaymentType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "balance": {
+                    "type": "integer"
+                },
+                "taxRate": {
+                    "type": "number"
+                },
+                "brokersFee": {
+                    "type": "number"
+                },
+                "downPayment": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "initialValueType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "yearlyChange": {
+                    "$ref": "#/definitions/YearlyChange"
+                },
+                "monthlyPaymentType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "start": {
+                    "$ref": "#/definitions/Start"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "amount": {
+                    "type": "integer"
+                },
+                "sellIfNeeded": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "insuranceRate": {
+                    "type": "number"
+                },
+                "balanceType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "repeatEnd": {
+                    "$ref": "#/definitions/RepeatEnd"
+                },
+                "repeatInterval": {
+                    "type": "integer"
+                },
+                "repeatScaler": {
+                    "type": "integer"
+                },
+                "repeatKeepLast": {
+                    "type": "boolean"
+                },
+                "repeatIntervalType": {
+                    "type": "string"
+                },
+                "estimateQBI": {
+                    "type": "boolean"
+                },
+                "initialBuildingValue": {
+                    "type": "integer"
+                },
+                "isPassiveIncome": {
+                    "type": "boolean"
+                },
+                "classification": {
+                    "type": "string"
+                },
+                "percentRented": {
+                    "type": "integer"
+                },
+                "improvementRateType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "generateIncome": {
+                    "type": "boolean"
+                },
+                "incomeRateType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "improvementRate": {
+                    "type": "integer"
+                },
+                "managementRateType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "cancelRent": {
+                    "type": "boolean"
+                },
+                "selfEmployment": {
+                    "type": "boolean"
+                },
+                "incomeRate": {
+                    "type": "integer"
+                },
+                "initialBuildingValueType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "managementRate": {
+                    "type": "integer"
+                },
+                "estimateRentalDeductions": {
+                    "type": "boolean"
+                },
+                "monthlyHOA": {
+                    "type": "integer"
+                },
+                "customIcon": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "amount",
+                "amountType",
+                "balance",
+                "balanceType",
+                "brokersFee",
+                "compounding",
+                "downPayment",
+                "downPaymentType",
+                "end",
+                "excludeLoanFromLNW",
+                "icon",
+                "id",
+                "initialValue",
+                "initialValueType",
+                "insuranceRate",
+                "insuranceRateType",
+                "interestRate",
+                "interestType",
+                "key",
+                "maintenanceRate",
+                "maintenanceRateType",
+                "monthlyPayment",
+                "monthlyPaymentType",
+                "name",
+                "owner",
+                "paymentMethod",
+                "planPath",
+                "repeat",
+                "start",
+                "taxRate",
+                "taxRateType",
+                "title",
+                "type",
+                "yearlyChange"
+            ],
+            "title": "AssetsEvent"
+        },
+        "RepeatEnd": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "value": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "type": {
+                    "$ref": "#/definitions/StartType"
+                }
+            },
+            "required": [
+                "type",
+                "value"
+            ],
+            "title": "RepeatEnd"
+        },
+        "YearlyChange": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string"
+                },
+                "limitEnabled": {
+                    "type": "boolean"
+                },
+                "amountType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "limitType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "amount": {
+                    "type": "number"
+                },
+                "custom": {
+                    "$ref": "#/definitions/Custom"
+                }
+            },
+            "required": [
+                "amount",
+                "limit",
+                "limitEnabled",
+                "limitType",
+                "type"
+            ],
+            "title": "YearlyChange"
+        },
+        "Custom": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/BondAllocation"
+                    }
+                }
+            },
+            "required": [
+                "data",
+                "type"
+            ],
+            "title": "Custom"
+        },
+        "BondAllocation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "y": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "x",
+                "y"
+            ],
+            "title": "BondAllocation"
+        },
+        "ComputedMilestone": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "goalId": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "icon": {
+                    "$ref": "#/definitions/Icon"
+                },
+                "color": {
+                    "$ref": "#/definitions/Color"
+                },
+                "showChartIcon": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "criteria": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ComputedMilestoneCriterion"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "color",
+                "criteria",
+                "goalId",
+                "icon",
+                "id",
+                "name",
+                "showChartIcon"
+            ],
+            "title": "ComputedMilestone"
+        },
+        "ComputedMilestoneCriterion": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "refId": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "valueType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                },
+                "operator": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "operator",
+                "refId",
+                "type",
+                "value",
+                "valueType"
+            ],
+            "title": "ComputedMilestoneCriterion"
+        },
+        "Expenses": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ExpensesEvent"
+                    }
+                }
+            },
+            "required": [
+                "events"
+            ],
+            "title": "Expenses"
+        },
+        "ExpensesEvent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "end": {
+                    "$ref": "#/definitions/Start"
+                },
+                "frequency": {
+                    "type": "string"
+                },
+                "frequencyChoices": {
+                    "type": "boolean"
+                },
+                "planPath": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "amountType": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/Owner"
+                },
+                "spendingType": {
+                    "type": "string"
+                },
+                "amount": {
+                    "type": "integer"
+                },
+                "key": {
+                    "type": "number"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "yearlyChange": {
+                    "$ref": "#/definitions/YearlyChange"
+                },
+                "start": {
+                    "$ref": "#/definitions/Start"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "repeatIntervalType": {
+                    "type": "string"
+                },
+                "fundWithAccount": {
+                    "type": "boolean"
+                },
+                "repeatEnd": {
+                    "$ref": "#/definitions/Start"
+                },
+                "repeat": {
+                    "type": "boolean"
+                },
+                "repeatScaler": {
+                    "type": "integer"
+                },
+                "repeatInterval": {
+                    "type": "integer"
+                },
+                "switchToMarried": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "amount",
+                "amountType",
+                "end",
+                "frequency",
+                "frequencyChoices",
+                "icon",
+                "id",
+                "key",
+                "name",
+                "owner",
+                "planPath",
+                "spendingType",
+                "start",
+                "title",
+                "type",
+                "yearlyChange"
+            ],
+            "title": "ExpensesEvent"
+        },
+        "PlanIncome": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/IncomeEvent"
+                    }
+                }
+            },
+            "required": [
+                "events"
+            ],
+            "title": "PlanIncome"
+        },
+        "IncomeEvent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "yearlyChange": {
+                    "$ref": "#/definitions/YearlyChange"
+                },
+                "frequencyChoices": {
+                    "type": "boolean"
+                },
+                "taxExempt": {
+                    "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "frequency": {
+                    "type": "string"
+                },
+                "repeatScaler": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "amountType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "start": {
+                    "$ref": "#/definitions/Start"
+                },
+                "amount": {
+                    "type": "integer"
+                },
+                "repeat": {
+                    "type": "boolean"
+                },
+                "repeatEnd": {
+                    "$ref": "#/definitions/Start"
+                },
+                "withhold": {
+                    "type": "integer"
+                },
+                "repeatIntervalType": {
+                    "type": "string"
+                },
+                "repeatInterval": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "routeToAccounts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "uuid"
+                    }
+                },
+                "key": {
+                    "type": "number"
+                },
+                "taxWithholding": {
+                    "type": "boolean"
+                },
+                "end": {
+                    "$ref": "#/definitions/Start"
+                },
+                "owner": {
+                    "$ref": "#/definitions/Owner"
+                },
+                "planPath": {
+                    "type": "string"
+                },
+                "pensionPayoutsEnd": {
+                    "$ref": "#/definitions/Start"
+                },
+                "pensionPayoutAmount": {
+                    "type": "integer"
+                },
+                "pensionContributionType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "pensionPayoutsAreTaxFree": {
+                    "type": "boolean"
+                },
+                "hasPension": {
+                    "type": "boolean"
+                },
+                "partTimeEnd": {
+                    "$ref": "#/definitions/Start"
+                },
+                "goPartTime": {
+                    "type": "boolean"
+                },
+                "pensionContribution": {
+                    "type": "integer"
+                },
+                "pensionPayoutRate": {
+                    "type": "integer"
+                },
+                "contribsReduceTaxableIncome": {
+                    "type": "boolean"
+                },
+                "hidden": {
+                    "type": "boolean"
+                },
+                "pensionPayoutsStart": {
+                    "$ref": "#/definitions/Start"
+                },
+                "partTimeStart": {
+                    "$ref": "#/definitions/RepeatEnd"
+                },
+                "partTimeRate": {
+                    "type": "integer"
+                },
+                "pensionPayoutType": {
+                    "type": "string"
+                },
+                "isDividendIncome": {
+                    "type": "boolean"
+                },
+                "selfEmployment": {
+                    "type": "boolean"
+                },
+                "preventOverflow": {
+                    "type": "boolean"
+                },
+                "isPassiveIncome": {
+                    "type": "boolean"
+                },
+                "wage": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "amount",
+                "amountType",
+                "end",
+                "frequency",
+                "frequencyChoices",
+                "icon",
+                "id",
+                "key",
+                "name",
+                "owner",
+                "planPath",
+                "start",
+                "taxExempt",
+                "taxWithholding",
+                "title",
+                "type",
+                "withhold",
+                "yearlyChange"
+            ],
+            "title": "IncomeEvent"
+        },
+        "PlanMeta": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "runKey": {
+                    "type": "integer"
+                },
+                "hasAddedPriorities": {
+                    "type": "boolean"
+                },
+                "dirty": {
+                    "type": "boolean"
+                },
+                "yearlySummary": {
+                    "$ref": "#/definitions/YearlySummary"
+                },
+                "wizardStep": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "dirty",
+                "hasAddedPriorities",
+                "index",
+                "runKey",
+                "wizardStep",
+                "yearlySummary"
+            ],
+            "title": "PlanMeta"
+        },
+        "YearlySummary": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "yearXVal": {
+                    "type": "integer"
+                },
+                "age": {
+                    "type": "integer"
+                },
+                "spouseAge": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "age",
+                "date",
+                "spouseAge",
+                "yearXVal"
+            ],
+            "title": "YearlySummary"
+        },
+        "Milestone": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "criteria": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/MilestoneCriterion"
+                    }
+                },
+                "version": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "hidden": {
+                    "type": "boolean"
+                },
+                "removable": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "color",
+                "criteria",
+                "icon",
+                "id",
+                "name"
+            ],
+            "title": "Milestone"
+        },
+        "MilestoneCriterion": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "$ref": "#/definitions/CriterionValue"
+                },
+                "modifier": {
+                    "$ref": "#/definitions/ModifierUnion"
+                },
+                "removable": {
+                    "type": "boolean"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "valueType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "refId": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "logic": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type",
+                "value"
+            ],
+            "title": "MilestoneCriterion"
+        },
+        "PlanMontecarlo": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "bondReturn": {
+                    "type": "string"
+                },
+                "splitPointModifier": {
+                    "$ref": "#/definitions/SplitPointModifierEnum"
+                },
+                "dividendRateStdDev": {
+                    "type": "integer"
+                },
+                "cryptoReturnMean": {
+                    "type": "integer"
+                },
+                "statsMetric": {
+                    "type": "string"
+                },
+                "inflationStdDev": {
+                    "type": "integer"
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "dividendRateMean": {
+                    "type": "number"
+                },
+                "investmentReturnMean": {
+                    "type": "integer"
+                },
+                "sampling": {
+                    "type": "string"
+                },
+                "metric": {
+                    "type": "string"
+                },
+                "investmentReturnStdDev": {
+                    "type": "integer"
+                },
+                "inflationMean": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "trials": {
+                    "type": "integer"
+                },
+                "blockSize": {
+                    "type": "integer"
+                },
+                "trialMetric": {
+                    "type": "string"
+                },
+                "cryptoReturn": {
+                    "type": "string"
+                },
+                "investmentReturn": {
+                    "type": "string"
+                },
+                "cryptoReturnStdDev": {
+                    "type": "integer"
+                },
+                "inflation": {
+                    "type": "string"
+                },
+                "bondReturnStdDev": {
+                    "type": "integer"
+                },
+                "dividendRate": {
+                    "type": "string"
+                },
+                "iterations": {
+                    "type": "integer"
+                },
+                "bondReturnMean": {
+                    "type": "integer"
+                },
+                "splitPoint": {
+                    "$ref": "#/definitions/SplitPoint"
+                }
+            },
+            "required": [
+                "blockSize",
+                "bondReturn",
+                "bondReturnMean",
+                "bondReturnStdDev",
+                "cryptoReturn",
+                "cryptoReturnMean",
+                "cryptoReturnStdDev",
+                "dividendRate",
+                "dividendRateMean",
+                "dividendRateStdDev",
+                "inflation",
+                "inflationMean",
+                "inflationStdDev",
+                "investmentReturn",
+                "investmentReturnMean",
+                "investmentReturnStdDev",
+                "iterations",
+                "metric",
+                "metrics",
+                "mode",
+                "sampling",
+                "splitPoint",
+                "splitPointModifier",
+                "statsMetric",
+                "trialMetric",
+                "trials"
+            ],
+            "title": "PlanMontecarlo"
+        },
+        "Priorities": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PrioritiesEvent"
+                    }
+                }
+            },
+            "required": [
+                "events"
+            ],
+            "title": "Priorities"
+        },
+        "PrioritiesEvent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "subtitle": {
+                    "type": "string"
+                },
+                "persistent": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "planPath": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/SavingsAccountType"
+                },
+                "hidden": {
+                    "type": "boolean"
+                },
+                "icon": {
+                    "$ref": "#/definitions/Icon"
+                },
+                "accountId": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "key": {
+                    "type": "number"
+                },
+                "amount": {
+                    "type": "integer"
+                },
+                "goalIntent": {
+                    "type": "string"
+                },
+                "maxMsg": {
+                    "type": "string"
+                },
+                "frequency": {
+                    "type": "string"
+                },
+                "amountType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "desiredContribution": {
+                    "type": "string"
+                },
+                "start": {
+                    "$ref": "#/definitions/Start"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "end": {
+                    "$ref": "#/definitions/Start"
+                },
+                "color": {
+                    "$ref": "#/definitions/Color"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/Owner"
+                },
+                "employerMatchLimit": {
+                    "type": "integer"
+                },
+                "yearlyLimit$Type": {
+                    "$ref": "#/definitions/Type"
+                },
+                "yearlyLimit": {
+                    "type": "integer"
+                },
+                "incomeStreamId": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "employerMatchType": {
+                    "type": "string"
+                },
+                "reduceEmployerMatch": {
+                    "type": "boolean"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "contributionType": {
+                    "type": "string"
+                },
+                "yearlyLimitType": {
+                    "type": "string"
+                },
+                "contribution": {
+                    "type": "integer"
+                },
+                "contributionsAreFixed": {
+                    "type": "boolean"
+                },
+                "employerMatch": {
+                    "type": "integer"
+                },
+                "contributionLimit": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "showChartIcon": {
+                    "type": "boolean"
+                },
+                "tapRate": {
+                    "type": "integer"
+                },
+                "tapFund": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "accountId",
+                "color",
+                "end",
+                "goalIntent",
+                "icon",
+                "id",
+                "key",
+                "name",
+                "owner",
+                "persistent",
+                "planPath",
+                "start",
+                "subtitle",
+                "title",
+                "type"
+            ],
+            "title": "PrioritiesEvent"
+        },
+        "StartingConditionsClass": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "spouseIcon": {
+                    "type": "string"
+                },
+                "yourColor": {
+                    "$ref": "#/definitions/Color"
+                },
+                "spouseAge": {
+                    "type": "integer"
+                },
+                "partnerStatus": {
+                    "type": "string"
+                },
+                "spouseBirthMonth": {
+                    "type": "integer"
+                },
+                "savingsAccounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/SavingsAccount"
+                    }
+                },
+                "ageFractional": {
+                    "type": "number"
+                },
+                "birthMonth": {
+                    "type": "integer"
+                },
+                "spouseBirthYear": {
+                    "type": "integer"
+                },
+                "location": {
+                    "$ref": "#/definitions/Location"
+                },
+                "spouseName": {
+                    "type": "string"
+                },
+                "yourName": {
+                    "type": "string"
+                },
+                "lastUpdated": {
+                    "type": "integer"
+                },
+                "investmentAccounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/InvestmentAccount"
+                    }
+                },
+                "schema": {
+                    "type": "number"
+                },
+                "tab": {
+                    "type": "integer"
+                },
+                "birthYear": {
+                    "type": "integer"
+                },
+                "yourIcon": {
+                    "type": "string"
+                },
+                "assets": {
+                    "type": "array",
+                    "items": {}
+                },
+                "age": {
+                    "type": "integer"
+                },
+                "debts": {
+                    "type": "array",
+                    "items": {}
+                },
+                "spouseAgeGap": {
+                    "type": "integer"
+                },
+                "spouseColor": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "age",
+                "assets",
+                "birthMonth",
+                "birthYear",
+                "debts",
+                "investmentAccounts",
+                "lastUpdated",
+                "location",
+                "partnerStatus",
+                "savingsAccounts",
+                "schema",
+                "spouseAge",
+                "spouseAgeGap",
+                "spouseBirthMonth",
+                "spouseBirthYear",
+                "spouseColor",
+                "spouseIcon",
+                "spouseName",
+                "tab",
+                "yourColor",
+                "yourIcon",
+                "yourName"
+            ],
+            "title": "StartingConditionsClass"
+        },
+        "Location": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "state": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "country",
+                "state"
+            ],
+            "title": "Location"
+        },
+        "SavingsAccount": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "isPassiveIncome": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "repurpose": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "$ref": "#/definitions/Title"
+                },
+                "investmentGrowthRate": {
+                    "type": "number"
+                },
+                "icon": {
+                    "$ref": "#/definitions/Icon"
+                },
+                "investmentGrowthType": {
+                    "$ref": "#/definitions/AssumptionsMode"
+                },
+                "color": {
+                    "$ref": "#/definitions/Color"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/Owner"
+                },
+                "type": {
+                    "$ref": "#/definitions/SavingsAccountType"
+                },
+                "withdrawAge": {
+                    "$ref": "#/definitions/Start"
+                },
+                "liquid": {
+                    "type": "boolean"
+                },
+                "dividendRate": {
+                    "type": "integer"
+                },
+                "withdraw": {
+                    "type": "boolean"
+                },
+                "balance": {
+                    "type": "integer"
+                },
+                "dividendType": {
+                    "$ref": "#/definitions/BondAllocationType"
+                }
+            },
+            "required": [
+                "balance",
+                "color",
+                "dividendRate",
+                "dividendType",
+                "icon",
+                "id",
+                "investmentGrowthRate",
+                "investmentGrowthType",
+                "isPassiveIncome",
+                "liquid",
+                "name",
+                "owner",
+                "repurpose",
+                "title",
+                "type",
+                "withdraw",
+                "withdrawAge"
+            ],
+            "title": "SavingsAccount"
+        },
+        "Variables": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "startYear": {
+                    "type": "integer"
+                },
+                "localIncomeTaxRate": {
+                    "type": "integer"
+                },
+                "flexSpending": {
+                    "$ref": "#/definitions/FlexSpending"
+                },
+                "effectiveIncomeTaxRate": {
+                    "type": "integer"
+                },
+                "assumptionsMode": {
+                    "$ref": "#/definitions/AssumptionsMode"
+                },
+                "incomeTaxModifier": {
+                    "type": "integer"
+                },
+                "bondLocation": {
+                    "$ref": "#/definitions/BondLocation"
+                },
+                "showRothConversionIcons": {
+                    "type": "boolean"
+                },
+                "bondAllocation": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/BondAllocation"
+                    }
+                },
+                "bondInvestmentReturn": {
+                    "type": "number"
+                },
+                "tcjaReversion": {
+                    "type": "boolean"
+                },
+                "drawdownOrder": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "bondDividendTaxMode": {
+                    "type": "string"
+                },
+                "wealthTaxMetric": {
+                    "type": "string"
+                },
+                "capGainsTaxablePercent": {
+                    "type": "integer"
+                },
+                "bondDividendRateCustom": {
+                    "$ref": "#/definitions/Custom"
+                },
+                "bondDividendTaxRate": {
+                    "type": "integer"
+                },
+                "dividendRateCustom": {
+                    "$ref": "#/definitions/Custom"
+                },
+                "investmentReturnModifier": {
+                    "type": "integer"
+                },
+                "cashFlowDefault": {
+                    "type": "string"
+                },
+                "investmentReturn": {
+                    "type": "integer"
+                },
+                "bbbSeniorReversion": {
+                    "type": "boolean"
+                },
+                "inflationModifier": {
+                    "type": "integer"
+                },
+                "startDate": {
+                    "type": "string",
+                    "format": "date"
+                },
+                "wealthTaxRate": {
+                    "type": "number"
+                },
+                "capGainsTaxAsIncome": {
+                    "type": "boolean"
+                },
+                "fttRate": {
+                    "type": "number"
+                },
+                "estimateTaxes": {
+                    "type": "boolean"
+                },
+                "bondDividendTax": {
+                    "$ref": "#/definitions/BondDividendTax"
+                },
+                "withholding": {
+                    "$ref": "#/definitions/Withholding"
+                },
+                "incomeTaxMode": {
+                    "$ref": "#/definitions/AssumptionsMode"
+                },
+                "dividendRate": {
+                    "type": "number"
+                },
+                "bondInvestmentReturnCustom": {
+                    "$ref": "#/definitions/Custom"
+                },
+                "fttTaxableEvent": {
+                    "type": "string"
+                },
+                "showFutureDollars": {
+                    "type": "boolean"
+                },
+                "wealthTaxMode": {
+                    "$ref": "#/definitions/BondAllocationType"
+                },
+                "bondInvestmentReturnModifier": {
+                    "type": "integer"
+                },
+                "investmentReturnCustom": {
+                    "$ref": "#/definitions/Custom"
+                },
+                "inflationCustom": {
+                    "$ref": "#/definitions/Custom"
+                },
+                "incomeTaxExtra": {
+                    "type": "array",
+                    "items": {}
+                },
+                "fttMode": {
+                    "$ref": "#/definitions/BondAllocationType"
+                },
+                "dividendTax": {
+                    "$ref": "#/definitions/DividendTax"
+                },
+                "bondDividendRate": {
+                    "type": "number"
+                },
+                "irmaa": {
+                    "type": "boolean"
+                },
+                "bondAllocationType": {
+                    "$ref": "#/definitions/BondAllocationType"
+                },
+                "projectFrom": {
+                    "$ref": "#/definitions/AssumptionsMode"
+                },
+                "capGainsTaxRate": {
+                    "type": "integer"
+                },
+                "dividendTaxRate": {
+                    "type": "integer"
+                },
+                "bondDividendRateModifier": {
+                    "type": "integer"
+                },
+                "filingStatus": {
+                    "type": "string"
+                },
+                "bbbSaltReversion": {
+                    "type": "boolean"
+                },
+                "dividendTaxMode": {
+                    "type": "string"
+                },
+                "incomeTaxNational": {
+                    "$ref": "#/definitions/IncomeTaxNational"
+                },
+                "capGainsModifier": {
+                    "type": "integer"
+                },
+                "capGainsMode": {
+                    "$ref": "#/definitions/AssumptionsMode"
+                },
+                "wealthTax": {
+                    "$ref": "#/definitions/WealthTax"
+                },
+                "medicare": {
+                    "type": "boolean"
+                },
+                "loopYear": {
+                    "type": "integer"
+                },
+                "capGains": {
+                    "$ref": "#/definitions/BondDividendTax"
+                },
+                "inflation": {
+                    "type": "integer"
+                },
+                "dividendRateModifier": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "assumptionsMode",
+                "bbbSaltReversion",
+                "bbbSeniorReversion",
+                "bondAllocation",
+                "bondAllocationType",
+                "bondDividendRate",
+                "bondDividendRateCustom",
+                "bondDividendRateModifier",
+                "bondDividendTax",
+                "bondDividendTaxMode",
+                "bondDividendTaxRate",
+                "bondInvestmentReturn",
+                "bondInvestmentReturnCustom",
+                "bondInvestmentReturnModifier",
+                "bondLocation",
+                "capGains",
+                "capGainsMode",
+                "capGainsModifier",
+                "capGainsTaxAsIncome",
+                "capGainsTaxRate",
+                "capGainsTaxablePercent",
+                "cashFlowDefault",
+                "dividendRate",
+                "dividendRateCustom",
+                "dividendRateModifier",
+                "dividendTax",
+                "dividendTaxMode",
+                "dividendTaxRate",
+                "drawdownOrder",
+                "effectiveIncomeTaxRate",
+                "estimateTaxes",
+                "filingStatus",
+                "flexSpending",
+                "fttMode",
+                "fttRate",
+                "fttTaxableEvent",
+                "incomeTaxExtra",
+                "incomeTaxMode",
+                "incomeTaxModifier",
+                "incomeTaxNational",
+                "inflation",
+                "inflationCustom",
+                "inflationModifier",
+                "investmentReturn",
+                "investmentReturnCustom",
+                "investmentReturnModifier",
+                "irmaa",
+                "localIncomeTaxRate",
+                "loopYear",
+                "medicare",
+                "projectFrom",
+                "showFutureDollars",
+                "showRothConversionIcons",
+                "startDate",
+                "startYear",
+                "tcjaReversion",
+                "wealthTax",
+                "wealthTaxMetric",
+                "wealthTaxMode",
+                "wealthTaxRate",
+                "withholding"
+            ],
+            "title": "Variables"
+        },
+        "BondDividendTax": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "brackets": {
+                    "type": "array",
+                    "items": {}
+                },
+                "offset": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "brackets",
+                "offset"
+            ],
+            "title": "BondDividendTax"
+        },
+        "BondLocation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string"
+                },
+                "accountOrder": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "uuid"
+                    }
+                }
+            },
+            "required": [
+                "accountOrder",
+                "type"
+            ],
+            "title": "BondLocation"
+        },
+        "DividendTax": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "offset": {
+                    "type": "string"
+                },
+                "brackets": {
+                    "type": "array",
+                    "items": {}
+                },
+                "allowance": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "allowance",
+                "brackets",
+                "offset"
+            ],
+            "title": "DividendTax"
+        },
+        "FlexSpending": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "points": {
+                    "type": "array",
+                    "items": {}
+                },
+                "interpolation": {
+                    "$ref": "#/definitions/BondAllocationType"
+                }
+            },
+            "required": [
+                "enabled",
+                "interpolation",
+                "points",
+                "scope"
+            ],
+            "title": "FlexSpending"
+        },
+        "IncomeTaxNational": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "standardDeduction": {
+                    "type": "integer"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "brackets": {
+                    "type": "array",
+                    "items": {}
+                }
+            },
+            "required": [
+                "brackets",
+                "icon",
+                "name",
+                "standardDeduction"
+            ],
+            "title": "IncomeTaxNational"
+        },
+        "WealthTax": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "brackets": {
+                    "type": "array",
+                    "items": {}
+                },
+                "allowance": {
+                    "type": "integer"
+                },
+                "standardDeduction": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "allowance",
+                "brackets",
+                "standardDeduction"
+            ],
+            "title": "WealthTax"
+        },
+        "Withholding": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "taxable": {
+                    "type": "integer"
+                },
+                "conversions": {
+                    "type": "integer"
+                },
+                "taxDeferred": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "conversions",
+                "taxDeferred",
+                "taxable"
+            ],
+            "title": "Withholding"
+        },
+        "WithdrawalStrategy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "strategy": {
+                    "type": "string"
+                },
+                "start": {
+                    "$ref": "#/definitions/Start"
+                },
+                "income": {
+                    "type": "string"
+                },
+                "spendMode": {
+                    "type": "string"
+                },
+                "initial-%": {
+                    "$ref": "#/definitions/1_N"
+                },
+                "fixed-%": {
+                    "$ref": "#/definitions/1_N"
+                },
+                "fixed-amount": {
+                    "$ref": "#/definitions/FixedAmount"
+                },
+                "1/N": {
+                    "$ref": "#/definitions/1_N"
+                },
+                "vpw": {
+                    "$ref": "#/definitions/1_N"
+                },
+                "kitces-ratchet": {
+                    "$ref": "#/definitions/KitcesRatchet"
+                },
+                "clyatt-95%": {
+                    "$ref": "#/definitions/1_N"
+                },
+                "guyton-klinger": {
+                    "$ref": "#/definitions/1_N"
+                }
+            },
+            "required": [
+                "1/N",
+                "clyatt-95%",
+                "enabled",
+                "fixed-%",
+                "fixed-amount",
+                "guyton-klinger",
+                "income",
+                "initial-%",
+                "kitces-ratchet",
+                "spendMode",
+                "start",
+                "strategy",
+                "vpw"
+            ],
+            "title": "WithdrawalStrategy"
+        },
+        "1_N": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "min": {
+                    "type": "integer"
+                },
+                "minType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "minEnabled": {
+                    "type": "boolean"
+                },
+                "max": {
+                    "type": "integer"
+                },
+                "maxType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "maxEnabled": {
+                    "type": "boolean"
+                },
+                "amount": {
+                    "type": "integer"
+                },
+                "percentOfPrevious": {
+                    "type": "integer"
+                },
+                "guardrail": {
+                    "type": "integer"
+                },
+                "adjustment": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "max",
+                "maxEnabled",
+                "maxType",
+                "min",
+                "minEnabled",
+                "minType"
+            ],
+            "title": "1_N"
+        },
+        "FixedAmount": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "amountType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "adjust": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "adjust",
+                "amount",
+                "amountType"
+            ],
+            "title": "FixedAmount"
+        },
+        "KitcesRatchet": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "threshold": {
+                    "type": "integer"
+                },
+                "ratchet": {
+                    "type": "integer"
+                },
+                "cooldown": {
+                    "type": "integer"
+                },
+                "min": {
+                    "type": "integer"
+                },
+                "minType": {
+                    "$ref": "#/definitions/Type"
+                },
+                "minEnabled": {
+                    "type": "boolean"
+                },
+                "max": {
+                    "type": "integer"
+                },
+                "maxType": {
+                    "$ref": "#/definitions/YearlyFeeTypeEnum"
+                },
+                "maxEnabled": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "amount",
+                "cooldown",
+                "max",
+                "maxEnabled",
+                "maxType",
+                "min",
+                "minEnabled",
+                "minType",
+                "ratchet",
+                "threshold"
+            ],
+            "title": "KitcesRatchet"
+        },
+        "SchemaProgress": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Datum"
+                    }
+                },
+                "lastUpdated": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "data",
+                "lastUpdated"
+            ],
+            "title": "SchemaProgress"
+        },
+        "Datum": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "taxDeferred": {
+                    "type": "integer"
+                },
+                "netWorth": {
+                    "type": "integer"
+                },
+                "taxFree": {
+                    "type": "integer"
+                },
+                "savings": {
+                    "type": "integer"
+                },
+                "assets": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "integer"
+                },
+                "taxable": {
+                    "type": "integer"
+                },
+                "crypto": {
+                    "type": "integer"
+                },
+                "loans": {
+                    "type": "integer"
+                },
+                "debt": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "assets",
+                "crypto",
+                "date",
+                "debt",
+                "loans",
+                "netWorth",
+                "savings",
+                "taxDeferred",
+                "taxFree",
+                "taxable"
+            ],
+            "title": "Datum"
+        },
+        "Settings": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "lastUpdated": {
+                    "type": "integer"
+                },
+                "schema": {
+                    "type": "number"
+                },
+                "theme": {
+                    "type": "string"
+                },
+                "acceptedTerms": {
+                    "type": "boolean"
+                },
+                "storageChoice": {
+                    "type": "string"
+                },
+                "keepMeLoggedIn": {
+                    "type": "boolean"
+                },
+                "allowSupportAccess": {
+                    "type": "boolean"
+                },
+                "enablePlugins": {
+                    "type": "boolean"
+                },
+                "plugins": {
+                    "$ref": "#/definitions/Plugins"
+                },
+                "completedOnboarding": {
+                    "type": "boolean"
+                },
+                "skipPlanWizard": {
+                    "type": "boolean"
+                },
+                "seenVersion": {
+                    "type": "string"
+                },
+                "seenRebrand": {
+                    "type": "boolean"
+                },
+                "autoProgress": {
+                    "type": "boolean"
+                },
+                "ci": {
+                    "$ref": "#/definitions/Ci"
+                },
+                "plots": {
+                    "$ref": "#/definitions/SettingsPlots"
+                },
+                "tables": {
+                    "$ref": "#/definitions/Tables"
+                },
+                "progress": {
+                    "$ref": "#/definitions/SettingsProgress"
+                },
+                "today": {
+                    "$ref": "#/definitions/SettingsToday"
+                },
+                "plan": {
+                    "$ref": "#/definitions/SettingsPlan"
+                },
+                "summary": {
+                    "$ref": "#/definitions/Summary"
+                },
+                "montecarlo": {
+                    "$ref": "#/definitions/SettingsMontecarlo"
+                },
+                "eventContainers": {
+                    "$ref": "#/definitions/EventContainers"
+                },
+                "tours": {
+                    "$ref": "#/definitions/Tours"
+                },
+                "forms": {
+                    "$ref": "#/definitions/Forms"
+                },
+                "billing": {
+                    "type": "string"
+                },
+                "taxCenter": {
+                    "$ref": "#/definitions/TaxCenter"
+                },
+                "effectiveTaxRate": {
+                    "$ref": "#/definitions/EffectiveTaxRate"
+                },
+                "spending": {
+                    "$ref": "#/definitions/Spending"
+                },
+                "layout": {
+                    "$ref": "#/definitions/Layout"
+                },
+                "pro": {
+                    "$ref": "#/definitions/Pro"
+                },
+                "emailConsent": {
+                    "$ref": "#/definitions/EmailConsent"
+                },
+                "savingEnabled": {
+                    "type": "boolean"
+                },
+                "localStorageEnabled": {
+                    "type": "boolean"
+                },
+                "subscribedToNewsletter": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "acceptedTerms",
+                "allowSupportAccess",
+                "autoProgress",
+                "billing",
+                "ci",
+                "completedOnboarding",
+                "effectiveTaxRate",
+                "emailConsent",
+                "enablePlugins",
+                "eventContainers",
+                "forms",
+                "keepMeLoggedIn",
+                "lastUpdated",
+                "layout",
+                "localStorageEnabled",
+                "montecarlo",
+                "plan",
+                "plots",
+                "plugins",
+                "pro",
+                "progress",
+                "savingEnabled",
+                "schema",
+                "seenRebrand",
+                "seenVersion",
+                "skipPlanWizard",
+                "spending",
+                "storageChoice",
+                "subscribedToNewsletter",
+                "summary",
+                "tables",
+                "taxCenter",
+                "theme",
+                "today",
+                "tours"
+            ],
+            "title": "Settings"
+        },
+        "Ci": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "currency": {
+                    "type": "string"
+                },
+                "locale": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "currency",
+                "locale"
+            ],
+            "title": "Ci"
+        },
+        "EffectiveTaxRate": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "income": {
+                    "$ref": "#/definitions/EffectiveTaxRateIncome"
+                },
+                "tax": {
+                    "$ref": "#/definitions/Tax"
+                }
+            },
+            "required": [
+                "income",
+                "tax"
+            ],
+            "title": "EffectiveTaxRate"
+        },
+        "EffectiveTaxRateIncome": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "nonTaxableCapitalWithdrawals": {
+                    "type": "boolean"
+                },
+                "nonTaxableSaleProceeds": {
+                    "type": "boolean"
+                },
+                "taxFreeDistributions": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "nonTaxableCapitalWithdrawals",
+                "nonTaxableSaleProceeds",
+                "taxFreeDistributions"
+            ],
+            "title": "EffectiveTaxRateIncome"
+        },
+        "Tax": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "local": {
+                    "type": "boolean"
+                },
+                "property": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "local",
+                "property"
+            ],
+            "title": "Tax"
+        },
+        "EmailConsent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "consent": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "consent",
+                "email"
+            ],
+            "title": "EmailConsent"
+        },
+        "EventContainers": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "pinned": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "active": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "dense": {
+                    "type": "array",
+                    "items": {}
+                }
+            },
+            "required": [
+                "active",
+                "dense",
+                "pinned"
+            ],
+            "title": "EventContainers"
+        },
+        "Forms": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "countryFilter": {
+                    "type": "string"
+                },
+                "view": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "countryFilter",
+                "view"
+            ],
+            "title": "Forms"
+        },
+        "Layout": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "cardDensity": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "cardDensity"
+            ],
+            "title": "Layout"
+        },
+        "SettingsMontecarlo": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "view": {
+                    "type": "string"
+                },
+                "maxWorkers": {
+                    "type": "integer"
+                },
+                "useRandomSeed": {
+                    "type": "boolean"
+                },
+                "randomSeed": {
+                    "type": "integer"
+                },
+                "successRates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/SuccessRate"
+                    }
+                },
+                "outcomeTypes": {
+                    "$ref": "#/definitions/OutcomeTypes"
+                }
+            },
+            "required": [
+                "maxWorkers",
+                "outcomeTypes",
+                "randomSeed",
+                "successRates",
+                "useRandomSeed",
+                "view"
+            ],
+            "title": "SettingsMontecarlo"
+        },
+        "OutcomeTypes": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "failedEarly": {
+                    "$ref": "#/definitions/AlmostFailed"
+                },
+                "failedMid": {
+                    "$ref": "#/definitions/AlmostFailed"
+                },
+                "failedLate": {
+                    "$ref": "#/definitions/AlmostFailed"
+                },
+                "almostFailed": {
+                    "$ref": "#/definitions/AlmostFailed"
+                },
+                "comfortable": {
+                    "$ref": "#/definitions/AlmostFailed"
+                },
+                "largeSurplus": {
+                    "$ref": "#/definitions/AlmostFailed"
+                },
+                "unknown": {
+                    "$ref": "#/definitions/AlmostFailed"
+                }
+            },
+            "required": [
+                "almostFailed",
+                "comfortable",
+                "failedEarly",
+                "failedLate",
+                "failedMid",
+                "largeSurplus",
+                "unknown"
+            ],
+            "title": "OutcomeTypes"
+        },
+        "AlmostFailed": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "color",
+                "icon",
+                "name",
+                "order",
+                "type"
+            ],
+            "title": "AlmostFailed"
+        },
+        "SuccessRate": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "color",
+                "icon",
+                "name",
+                "value"
+            ],
+            "title": "SuccessRate"
+        },
+        "SettingsPlan": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "tabs": {
+                    "$ref": "#/definitions/Tabs"
+                },
+                "alignment": {
+                    "$ref": "#/definitions/Alignment"
+                }
+            },
+            "required": [
+                "alignment",
+                "tabs"
+            ],
+            "title": "SettingsPlan"
+        },
+        "Alignment": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "Alignment"
+        },
+        "Tabs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "pinned": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "pinned"
+            ],
+            "title": "Tabs"
+        },
+        "SettingsPlots": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "plotChoice": {
+                    "type": "string"
+                },
+                "view": {
+                    "type": "string"
+                },
+                "yscale": {
+                    "type": "string"
+                },
+                "xlabels": {
+                    "type": "string"
+                },
+                "minimal": {
+                    "type": "boolean"
+                },
+                "completionLabels": {
+                    "type": "string"
+                },
+                "grid": {
+                    "type": "string"
+                },
+                "chartHeightModifier": {
+                    "type": "integer"
+                },
+                "yMirror": {
+                    "type": "boolean"
+                },
+                "showEveryTick": {
+                    "type": "boolean"
+                },
+                "gradientFill": {
+                    "type": "boolean"
+                },
+                "solidStackedFill": {
+                    "type": "boolean"
+                },
+                "roundedBars": {
+                    "type": "boolean"
+                },
+                "thickBars": {
+                    "type": "boolean"
+                },
+                "overlapBars": {
+                    "type": "boolean"
+                },
+                "siPrefixes": {
+                    "type": "boolean"
+                },
+                "individual": {
+                    "$ref": "#/definitions/Individual"
+                },
+                "selectedPercentiles": {
+                    "$ref": "#/definitions/SelectedPercentiles"
+                },
+                "showIcons": {
+                    "type": "string"
+                },
+                "tooltipSiPrefixes": {
+                    "type": "boolean"
+                },
+                "summarySiPrefixes": {
+                    "type": "boolean"
+                },
+                "dashboardSiPrefixes": {
+                    "type": "boolean"
+                },
+                "curves": {
+                    "type": "boolean"
+                },
+                "animation": {
+                    "type": "string"
+                },
+                "startAtZero": {
+                    "type": "boolean"
+                },
+                "sankey": {
+                    "$ref": "#/definitions/Sankey"
+                },
+                "trialChartType": {
+                    "$ref": "#/definitions/TrialChartTypeEnum"
+                },
+                "showFinancedAssetsAsDebt": {
+                    "type": "boolean"
+                },
+                "tryToFillCanvas": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "animation",
+                "chartHeightModifier",
+                "completionLabels",
+                "curves",
+                "dashboardSiPrefixes",
+                "gradientFill",
+                "grid",
+                "individual",
+                "minimal",
+                "overlapBars",
+                "plotChoice",
+                "roundedBars",
+                "sankey",
+                "selectedPercentiles",
+                "showEveryTick",
+                "showFinancedAssetsAsDebt",
+                "showIcons",
+                "siPrefixes",
+                "solidStackedFill",
+                "startAtZero",
+                "summarySiPrefixes",
+                "thickBars",
+                "tooltipSiPrefixes",
+                "trialChartType",
+                "tryToFillCanvas",
+                "view",
+                "xlabels",
+                "yMirror",
+                "yscale"
+            ],
+            "title": "SettingsPlots"
+        },
+        "Individual": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "customTable": {
+                    "$ref": "#/definitions/CustomTable"
+                },
+                "netWorth": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "stackedAssets": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "incomeByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "expensesByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "spendingByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "spendingBySection": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "discretionarySpendingByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "essentialSpendingByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "flexSpendingByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "taxesByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "withdrawalsByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "taxableIncomeByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "stateTaxableIncomeByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "localTaxableIncomeByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "savingsRate": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "contributions": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "contributionsAndWithdrawals": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "goalHeatmap": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "incomeBySource": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "granularExpenses": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "granularSpending": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "granularTaxes": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "withdrawalsBySource": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "taxableIncomeBySource": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "stateTaxableIncomeBySource": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "localTaxableIncomeBySource": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "nonTaxableIncomeByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "passiveIncomeByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "granularContributions": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "granularContributionsAndWithdrawals": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "granularDebtPayments": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "lnwByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "lnwByAccount": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "stackedAccounts": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "changeInNetWorth": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "granularChangeInNetWorth": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "investmentReturnsByCategory": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "investmentReturnsByAccount": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "investmentAllocations": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "investmentAllocationsBalance": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "accountAllocations": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "summaryTable": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "investmentReturnsTable": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "incomeTable": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "cashFlow": {
+                    "$ref": "#/definitions/AccountAllocations"
+                },
+                "stackedLiquid": {
+                    "$ref": "#/definitions/AccountAllocations"
+                }
+            },
+            "required": [
+                "accountAllocations",
+                "cashFlow",
+                "changeInNetWorth",
+                "contributions",
+                "contributionsAndWithdrawals",
+                "customTable",
+                "discretionarySpendingByCategory",
+                "essentialSpendingByCategory",
+                "expensesByCategory",
+                "flexSpendingByCategory",
+                "goalHeatmap",
+                "granularChangeInNetWorth",
+                "granularContributions",
+                "granularContributionsAndWithdrawals",
+                "granularDebtPayments",
+                "granularExpenses",
+                "granularSpending",
+                "granularTaxes",
+                "incomeByCategory",
+                "incomeBySource",
+                "incomeTable",
+                "investmentAllocations",
+                "investmentAllocationsBalance",
+                "investmentReturnsByAccount",
+                "investmentReturnsByCategory",
+                "investmentReturnsTable",
+                "lnwByAccount",
+                "lnwByCategory",
+                "localTaxableIncomeByCategory",
+                "localTaxableIncomeBySource",
+                "netWorth",
+                "nonTaxableIncomeByCategory",
+                "passiveIncomeByCategory",
+                "savingsRate",
+                "spendingByCategory",
+                "spendingBySection",
+                "stackedAccounts",
+                "stackedAssets",
+                "stackedLiquid",
+                "stateTaxableIncomeByCategory",
+                "stateTaxableIncomeBySource",
+                "summaryTable",
+                "taxableIncomeByCategory",
+                "taxableIncomeBySource",
+                "taxesByCategory",
+                "withdrawalsByCategory",
+                "withdrawalsBySource"
+            ],
+            "title": "Individual"
+        },
+        "AccountAllocations": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "mode": {
+                    "$ref": "#/definitions/Mode"
+                },
+                "type": {
+                    "$ref": "#/definitions/TrialChartTypeEnum"
+                }
+            },
+            "required": [
+                "mode",
+                "type"
+            ],
+            "title": "AccountAllocations"
+        },
+        "CustomTable": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "mode": {
+                    "$ref": "#/definitions/Mode"
+                },
+                "type": {
+                    "$ref": "#/definitions/TrialChartTypeEnum"
+                },
+                "runMetrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/RunMetric"
+                    }
+                },
+                "hidden": {
+                    "$ref": "#/definitions/Hidden"
+                }
+            },
+            "required": [
+                "hidden",
+                "mode",
+                "runMetrics",
+                "type"
+            ],
+            "title": "CustomTable"
+        },
+        "Hidden": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "run-metric:liquidNetWorth": {
+                    "type": "boolean"
+                },
+                "run-metric:income": {
+                    "type": "boolean"
+                },
+                "run-metric:expenses": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "run-metric:expenses",
+                "run-metric:income",
+                "run-metric:liquidNetWorth"
+            ],
+            "title": "Hidden"
+        },
+        "RunMetric": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "key": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "key"
+            ],
+            "title": "RunMetric"
+        },
+        "Sankey": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "yscaler": {
+                    "type": "integer"
+                },
+                "fullscreen": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "fullscreen",
+                "yscaler"
+            ],
+            "title": "Sankey"
+        },
+        "SelectedPercentiles": {
+            "type": "object",
+            "additionalProperties": false,
+            "title": "SelectedPercentiles"
+        },
+        "Plugins": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "apiKey": {
+                    "type": "string",
+                    "format": "uuid"
+                }
+            },
+            "required": [
+                "apiKey",
+                "enabled"
+            ],
+            "title": "Plugins"
+        },
+        "Pro": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "itemsPerPage": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "itemsPerPage"
+            ],
+            "title": "Pro"
+        },
+        "SettingsProgress": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "rangeIndex": {
+                    "type": "integer"
+                },
+                "metric": {
+                    "type": "string"
+                },
+                "splitMetrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "itemsPerPage": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "itemsPerPage",
+                "metric",
+                "rangeIndex",
+                "splitMetrics"
+            ],
+            "title": "SettingsProgress"
+        },
+        "Spending": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "taxes": {
+                    "type": "boolean"
+                },
+                "mortgage": {
+                    "type": "boolean"
+                },
+                "mortgagePrincipal": {
+                    "type": "boolean"
+                },
+                "consumerDebtPrincipal": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "consumerDebtPrincipal",
+                "mortgage",
+                "mortgagePrincipal",
+                "taxes"
+            ],
+            "title": "Spending"
+        },
+        "Summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "hidden": {
+                    "$ref": "#/definitions/SelectedPercentiles"
+                },
+                "aggregation": {
+                    "$ref": "#/definitions/Aggregation"
+                },
+                "rearrange": {
+                    "type": "boolean"
+                },
+                "xscaler": {
+                    "type": "integer"
+                },
+                "density": {
+                    "type": "string"
+                },
+                "showAll": {
+                    "type": "boolean"
+                },
+                "metricOrder": {
+                    "$ref": "#/definitions/SelectedPercentiles"
+                }
+            },
+            "required": [
+                "aggregation",
+                "density",
+                "hidden",
+                "metricOrder",
+                "rearrange",
+                "showAll",
+                "xscaler"
+            ],
+            "title": "Summary"
+        },
+        "Aggregation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "expenses": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "expenses"
+            ],
+            "title": "Aggregation"
+        },
+        "Tables": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "tableChoice": {
+                    "type": "string"
+                },
+                "yearIndexFormat": {
+                    "type": "string"
+                },
+                "chart": {
+                    "$ref": "#/definitions/Chart"
+                }
+            },
+            "required": [
+                "chart",
+                "tableChoice",
+                "yearIndexFormat"
+            ],
+            "title": "Tables"
+        },
+        "Chart": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "visible": {
+                    "type": "boolean"
+                },
+                "heightPercent": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "heightPercent",
+                "visible"
+            ],
+            "title": "Chart"
+        },
+        "TaxCenter": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "metricMode": {
+                    "type": "string"
+                },
+                "selectedMetrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "jurisdiction": {
+                    "type": "string"
+                },
+                "plots": {
+                    "$ref": "#/definitions/TaxCenterPlots"
+                },
+                "table": {
+                    "$ref": "#/definitions/Table"
+                }
+            },
+            "required": [
+                "jurisdiction",
+                "metricMode",
+                "plots",
+                "selectedMetrics",
+                "table"
+            ],
+            "title": "TaxCenter"
+        },
+        "TaxCenterPlots": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "granular": {
+                    "type": "boolean"
+                },
+                "rates": {
+                    "type": "string"
+                },
+                "income": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "granular",
+                "income",
+                "rates"
+            ],
+            "title": "TaxCenterPlots"
+        },
+        "Table": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "selectedMetrics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "selectedMetrics"
+            ],
+            "title": "Table"
+        },
+        "SettingsToday": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "tab": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "tab"
+            ],
+            "title": "SettingsToday"
+        },
+        "Tours": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "finished": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "finished"
+            ],
+            "title": "Tours"
+        },
+        "StartValue": {
+            "anyOf": [
+                {
+                    "type": "string",
+                    "format": "date"
+                },
+                {
+                    "$ref": "#/definitions/SplitPoint"
+                },
+                {
+                    "type": "string",
+                    "format": "uuid"
+                }
+            ],
+            "title": "StartValue"
+        },
+        "ModifierUnion": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/SplitPointModifierEnum"
+                },
+                {
+                    "type": "integer"
+                }
+            ],
+            "title": "ModifierUnion"
+        },
+        "CriterionValue": {
+            "anyOf": [
+                {
+                    "type": "string",
+                    "format": "date"
+                },
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "string",
+                    "format": "uuid"
+                }
+            ],
+            "title": "CriterionValue"
+        },
+        "Color": {
+            "type": "string",
+            "enum": [
+                "teal-lighten-1",
+                "cyan",
+                "light-blue",
+                "blue-darken-1"
+            ],
+            "title": "Color"
+        },
+        "BondAllocationType": {
+            "type": "string",
+            "enum": [
+                "none",
+                "plan"
+            ],
+            "title": "BondAllocationType"
+        },
+        "Icon": {
+            "type": "string",
+            "enum": [
+                "mdi-piggy-bank",
+                "mdi-finance"
+            ],
+            "title": "Icon"
+        },
+        "AssumptionsMode": {
+            "type": "string",
+            "enum": [
+                "fixed",
+                "plan"
+            ],
+            "title": "AssumptionsMode"
+        },
+        "Owner": {
+            "type": "string",
+            "enum": [
+                "me"
+            ],
+            "title": "Owner"
+        },
+        "Title": {
+            "type": "string",
+            "enum": [
+                "Savings",
+                "Taxable Investments",
+                "401k/403b",
+                "Roth IRA"
+            ],
+            "title": "Title"
+        },
+        "SavingsAccountType": {
+            "type": "string",
+            "enum": [
+                "savings",
+                "taxable",
+                "401k",
+                "roth-ira"
+            ],
+            "title": "SavingsAccountType"
+        },
+        "StartType": {
+            "type": "string",
+            "enum": [
+                "keyword",
+                "milestone",
+                "date"
+            ],
+            "title": "StartType"
+        },
+        "SplitPoint": {
+            "type": "string",
+            "enum": [
+                "now",
+                "retirement",
+                "never",
+                "endOfPlan",
+                "beforeCurrentYear"
+            ],
+            "title": "SplitPoint"
+        },
+        "YearlyFeeTypeEnum": {
+            "type": "string",
+            "enum": [
+                "%",
+                "inflation+%"
+            ],
+            "title": "YearlyFeeTypeEnum"
+        },
+        "Type": {
+            "type": "string",
+            "enum": [
+                "today$"
+            ],
+            "title": "Type"
+        },
+        "SplitPointModifierEnum": {
+            "type": "string",
+            "enum": [
+                "include",
+                "exclude"
+            ],
+            "title": "SplitPointModifierEnum"
+        },
+        "Mode": {
+            "type": "string",
+            "enum": [
+                "plot",
+                "table"
+            ],
+            "title": "Mode"
+        },
+        "TrialChartTypeEnum": {
+            "type": "string",
+            "enum": [
+                "stacked-bar",
+                "bar",
+                "line"
+            ],
+            "title": "TrialChartTypeEnum"
+        }
+    }
+}

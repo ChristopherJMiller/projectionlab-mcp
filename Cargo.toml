@@ -3,11 +3,19 @@ name = "projectionlab-mcp"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "export-data"
+path = "src/bin/export_data.rs"
+
+[[bin]]
+name = "call-tool"
+path = "src/bin/call_tool.rs"
+
 [dependencies]
-# MCP server framework with HTTP streamable transport
+# MCP server framework with stdio transport
 rmcp = { version = "0.8", features = [
     "server",
-    "transport-streamable-http-server",
+    "transport-io",
 ] }
 
 # Browser automation with Firefox
@@ -15,10 +23,6 @@ thirtyfour = "0.33"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
-
-# HTTP server framework
-axum = "0.8"
 
 # Serialization and JSON schema
 serde = { version = "1", features = ["derive"] }
@@ -31,3 +35,12 @@ anyhow = "1"
 # Logging and tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Date and time
+chrono = "0.4"
+
+# Retry with backoff
+backoff = { version = "0.4", features = ["tokio"] }
+
+# XDG/platform directories
+dirs = "6"

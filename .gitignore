@@ -1,1 +1,6 @@
 /target
+
+# Real financial data exports - never commit
+example.json
+/debug-data/
+schema_from_rust.json

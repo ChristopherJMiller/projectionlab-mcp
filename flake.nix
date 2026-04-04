@@ -37,13 +37,9 @@
             # Browser automation dependencies
             firefox
             geckodriver
+            # Code generation tools
+            quicktype
           ];
-
-          shellHook = ''
-            echo "ProjectionLab MCP Server Development Environment"
-            echo "Browser: Firefox with GeckoDriver"
-            echo "Run 'cargo run' to start the server"
-          '';
         };
 
         packages.default = pkgs.rustPlatform.buildRustPackage {
