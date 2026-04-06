@@ -11,6 +11,10 @@ path = "src/bin/export_data.rs"
 name = "call-tool"
 path = "src/bin/call_tool.rs"
 
+[[bin]]
+name = "test-tools"
+path = "src/bin/test_tools.rs"
+
 [dependencies]
 # MCP server framework with stdio transport
 rmcp = { version = "0.8", features = [

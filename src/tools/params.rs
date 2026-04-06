@@ -126,6 +126,74 @@ pub struct PlansCloneParams {
     pub new_name: String,
 }
 
+/// Parameters for creating a new plan
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct PlansCreateParams {
+    /// Name for the new plan
+    pub name: String,
+    /// Icon identifier for the plan (e.g., "mdi-airplane", "mdi-home")
+    #[serde(default = "default_plan_icon")]
+    pub icon: String,
+    /// Optional: clone from an existing plan ID instead of creating empty
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clone_from: Option<String>,
+}
+
+fn default_plan_icon() -> String {
+    "mdi-file-document-outline".to_string()
+}
+
+/// Parameters for deleting a plan
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct PlansDeleteParams {
+    /// The ID of the plan to delete
+    pub plan_id: String,
+    /// Must be true to confirm deletion (safety check)
+    pub confirm: bool,
+}
+
+// ---- Milestone tools ----
+
+/// Parameters for creating a milestone in a plan
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct MilestoneCreateParams {
+    /// The ID of the plan to add the milestone to
+    pub plan_id: String,
+    /// The milestone data as a JSON object. Must include: name, icon, color, criteria.
+    pub data: JsonMap<String, JsonValue>,
+}
+
+/// Parameters for updating a milestone in a plan
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct MilestoneUpdateParams {
+    /// The ID of the plan containing the milestone
+    pub plan_id: String,
+    /// The ID of the milestone to update
+    pub milestone_id: String,
+    /// The updated fields as a JSON object (partial updates supported)
+    pub data: JsonMap<String, JsonValue>,
+}
+
+/// Parameters for deleting a milestone from a plan
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct MilestoneDeleteParams {
+    /// The ID of the plan containing the milestone
+    pub plan_id: String,
+    /// The ID of the milestone to delete
+    pub milestone_id: String,
+}
+
+// ---- Plan metadata tools ----
+
+/// Parameters for updating plan metadata (name, icon, active status)
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct PlansUpdateMetadataParams {
+    /// The ID of the plan to update
+    pub plan_id: String,
+    /// The metadata fields to update. Allowed keys: name, icon, active.
+    pub updates: JsonMap<String, JsonValue>,
+}
+
 // ---- Event tools (expenses, income, priorities) ----
 
 /// Parameters for listing events in a plan
@@ -208,6 +276,41 @@ pub struct ProgressGetHistoryParams {
     /// Optional end date filter (unix timestamp in milliseconds)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_date: Option<i64>,
+}
+
+// ---- Browser / Simulation tools ----
+
+/// Parameters for executing JavaScript in the browser
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct RunJsInBrowserParams {
+    /// The JavaScript code to execute in the browser context. Use 'return' for sync scripts.
+    pub script: String,
+    /// If true, treat script as async (last argument is a callback). Default: false.
+    #[serde(default)]
+    pub r#async: bool,
+    /// Optional: navigate to this path first (e.g., "/plan/abc123")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub navigate_to: Option<String>,
+}
+
+/// Parameters for getting a year snapshot from simulation results
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct YearSnapshotParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// The age to get the financial snapshot for
+    pub age: i64,
+}
+
+/// Parameters for getting year range deltas from simulation results
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct YearRangeParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// Start age of the range
+    pub start_age: i64,
+    /// End age of the range
+    pub end_age: i64,
 }
 
 // ---- Integration tools ----

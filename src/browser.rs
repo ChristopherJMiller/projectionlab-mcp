@@ -29,6 +29,8 @@ pub struct BrowserSession {
     api_key: Option<String>,
     /// Optional GeckoDriver child process (if we started it)
     geckodriver_process: Option<Child>,
+    /// Last path navigated to (for skipping redundant navigations)
+    last_navigated_path: Option<String>,
 }
 
 impl BrowserSession {
@@ -53,6 +55,7 @@ impl BrowserSession {
             driver: Some(driver),
             api_key: None,
             geckodriver_process,
+            last_navigated_path: None,
         };
 
         // Step 2: Check if we're already logged in
@@ -394,6 +397,69 @@ impl BrowserSession {
         }
 
         Ok(value)
+    }
+
+    /// Navigate the browser to a path within ProjectionLab (e.g., "/plan/abc123").
+    /// Skips navigation if already on the same path.
+    pub async fn navigate_to(&mut self, path: &str) -> Result<()> {
+        if self.last_navigated_path.as_deref() == Some(path) {
+            info!("Already on path: {}, skipping navigation", path);
+            return Ok(());
+        }
+        let url = format!("{}{}", PROJECTIONLAB_URL, path);
+        info!("Navigating to: {}", url);
+        self.driver()?.goto(&url).await?;
+        // Give the SPA time to route and render
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        self.last_navigated_path = Some(path.to_string());
+        Ok(())
+    }
+
+    /// Execute arbitrary JavaScript in the browser and return the result as JSON
+    pub async fn execute_js(&self, script: &str) -> Result<Value> {
+        info!("Executing JS ({} chars)", script.len());
+        let result = self.driver()?.execute(script, vec![]).await
+            .context("Failed to execute JavaScript")?;
+        Ok(result.json().clone())
+    }
+
+    /// Execute async JavaScript (with Promise support) and return the result
+    pub async fn execute_js_async(&self, script: &str) -> Result<Value> {
+        info!("Executing async JS ({} chars)", script.len());
+        let result = self.driver()?.execute_async(script, vec![]).await
+            .context("Failed to execute async JavaScript")?;
+        let value = result.json().clone();
+        if let Some(err_msg) = value.get("__error").and_then(|e| e.as_str()) {
+            anyhow::bail!("JavaScript error: {}", err_msg);
+        }
+        Ok(value)
+    }
+
+    /// Wait for a DOM element matching the CSS selector to appear, with timeout
+    pub async fn wait_for_element(&self, selector: &str, timeout_secs: u64) -> Result<()> {
+        info!("Waiting for element: {} (timeout: {}s)", selector, timeout_secs);
+        let script = format!(
+            r#"
+            const callback = arguments[arguments.length - 1];
+            const timeout = {timeout} * 1000;
+            const start = Date.now();
+            const check = () => {{
+                if (document.querySelector("{selector}")) {{
+                    callback({{"found": true}});
+                }} else if (Date.now() - start > timeout) {{
+                    callback({{"__error": "Timeout waiting for element: {selector}"}});
+                }} else {{
+                    setTimeout(check, 250);
+                }}
+            }};
+            check();
+            "#,
+            timeout = timeout_secs,
+            selector = selector,
+        );
+        self.driver()?.execute_async(&script, vec![]).await
+            .context(format!("Failed waiting for element: {}", selector))?;
+        Ok(())
     }
 
     /// Gracefully shut down: quit the WebDriver session (closes Firefox), then kill GeckoDriver.

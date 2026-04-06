@@ -20,6 +20,7 @@ pub mod resources;
 
 // Re-export types used by server, resources, and tests
 pub use debt::DebtAccount;
+pub use milestone::Milestone;
 pub use expenses::ExpenseEvent;
 pub use income::IncomeEvent;
 pub use priorities::PriorityEvent;
