@@ -263,12 +263,8 @@ impl ResourceProvider {
         let mut expenses = Vec::new();
         let mut expenses_by_category: HashMap<String, usize> = HashMap::new();
 
-        // Extract expenses from all active plans
+        // Extract expenses from all plans
         for plan in &data.plans {
-            if !plan.active {
-                continue;
-            }
-
             // Access expenses directly (not optional)
             for event in &plan.expenses.events {
                 let expense_type = event.event_type.clone();
@@ -348,16 +344,13 @@ impl ResourceProvider {
         })
     }
 
-    /// Get income summary resource across active plans
+    /// Get income summary resource across all plans
     async fn get_income_summary(&self) -> Result<ReadResourceResult> {
         let data = self.sync.get_data().await?;
 
         let mut income_events = Vec::new();
 
         for plan in &data.plans {
-            if !plan.active {
-                continue;
-            }
             for event in &plan.income.events {
                 income_events.push(json!({
                     "id": event.id,
