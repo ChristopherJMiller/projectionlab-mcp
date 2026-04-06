@@ -9,6 +9,9 @@ use tracing::{debug, info};
 /// Cache time-to-live in seconds
 const CACHE_TTL_SECS: u64 = 30;
 
+/// How long to wait for the browser session to initialize before giving up
+const BROWSER_READY_TIMEOUT_SECS: u64 = 60;
+
 /// Manages synchronization and caching of ProjectionLab data
 pub struct SyncManager {
     browser: Arc<tokio::sync::Mutex<Option<BrowserSession>>>,
@@ -84,9 +87,32 @@ impl SyncManager {
         *cache = None;
     }
 
+    /// Wait for the browser session to be initialized (it starts in a background task).
+    /// Returns an error if it doesn't become ready within the timeout.
+    async fn wait_for_browser(&self) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(BROWSER_READY_TIMEOUT_SECS);
+        loop {
+            {
+                let guard = self.browser.lock().await;
+                if guard.is_some() {
+                    return Ok(());
+                }
+            }
+            if Instant::now() >= deadline {
+                anyhow::bail!(
+                    "Browser session not initialized after {}s — is Firefox/GeckoDriver available?",
+                    BROWSER_READY_TIMEOUT_SECS
+                );
+            }
+            debug!("Waiting for browser session to initialize...");
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+
     /// Fetch data from ProjectionLab via the browser.
     /// Navigates to the home page first to ensure exportData runs in a consistent context.
     async fn fetch_data(&self) -> Result<FullExport> {
+        self.wait_for_browser().await?;
         let mut browser_guard = self.browser.lock().await;
         let browser = browser_guard
             .as_mut()
@@ -116,6 +142,7 @@ impl SyncManager {
     /// This is used by domain tools to push changes back to ProjectionLab
     pub async fn update_current_finances(&self, new_finances: serde_json::Value) -> Result<()> {
         info!("Updating current finances in ProjectionLab...");
+        self.wait_for_browser().await?;
 
         let browser_guard = self.browser.lock().await;
         let browser = browser_guard
@@ -138,6 +165,7 @@ impl SyncManager {
     /// Update plans in ProjectionLab and invalidate cache
     pub async fn update_plans(&self, new_plans: serde_json::Value) -> Result<()> {
         info!("Updating plans in ProjectionLab...");
+        self.wait_for_browser().await?;
 
         let browser_guard = self.browser.lock().await;
         let browser = browser_guard
@@ -160,6 +188,7 @@ impl SyncManager {
     /// Update progress in ProjectionLab and invalidate cache
     pub async fn update_progress(&self, new_progress: serde_json::Value) -> Result<()> {
         info!("Updating progress in ProjectionLab...");
+        self.wait_for_browser().await?;
 
         let browser_guard = self.browser.lock().await;
         let browser = browser_guard
@@ -182,6 +211,7 @@ impl SyncManager {
     /// Update settings in ProjectionLab and invalidate cache
     pub async fn update_settings(&self, new_settings: serde_json::Value) -> Result<()> {
         info!("Updating settings in ProjectionLab...");
+        self.wait_for_browser().await?;
 
         let browser_guard = self.browser.lock().await;
         let browser = browser_guard

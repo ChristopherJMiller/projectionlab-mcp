@@ -43,11 +43,27 @@ impl ProjectionLabServer {
         self.browser.clone()
     }
 
-    /// Helper to get browser session or return error
+    /// Helper to get browser session, waiting for it to initialize if needed.
     async fn get_browser(
         &self,
     ) -> Result<tokio::sync::MutexGuard<'_, Option<BrowserSession>>, McpError> {
-        Ok(self.browser.lock().await)
+        // Wait up to 60s for the background browser init to complete
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            {
+                let guard = self.browser.lock().await;
+                if guard.is_some() {
+                    return Ok(guard);
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(McpError::internal_error(
+                    "Browser session not initialized after 60s — is Firefox/GeckoDriver available?",
+                    None,
+                ));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
     }
 
     /// Navigate to a plan page, wait for simulation, execute async JS, and return the result.
