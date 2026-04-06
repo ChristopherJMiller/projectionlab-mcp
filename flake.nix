@@ -53,14 +53,19 @@
 
           nativeBuildInputs = with pkgs; [
             pkg-config
+            makeWrapper
           ];
 
           buildInputs = with pkgs; [
             openssl
-            # Runtime browser automation dependencies
-            firefox
-            geckodriver
           ];
+
+          postInstall = ''
+            for bin in $out/bin/*; do
+              wrapProgram "$bin" \
+                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.firefox pkgs.geckodriver ]}
+            done
+          '';
         };
 
         # App configuration for 'nix run'
