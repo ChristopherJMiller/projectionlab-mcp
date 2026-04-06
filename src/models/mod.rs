@@ -25,7 +25,7 @@ pub use expenses::ExpenseEvent;
 pub use income::IncomeEvent;
 pub use priorities::PriorityEvent;
 pub use plan::{Plan, StartingConditions, StartingAccount};
-pub use settings::{Progress, ProgressDataPoint};
+pub use settings::{Progress, ProgressDataPoint, Settings};
 pub use resources::{
     OverviewResource, AccountsSummaryResource, AccountSummary, AccountDetailsResource,
     ExpensesSummaryResource, ExpenseSummary,

@@ -84,20 +84,28 @@ impl SyncManager {
         *cache = None;
     }
 
-    /// Fetch data from ProjectionLab via the browser
+    /// Fetch data from ProjectionLab via the browser.
+    /// Navigates to the home page first to ensure exportData runs in a consistent context.
     async fn fetch_data(&self) -> Result<FullExport> {
-        let browser_guard = self.browser.lock().await;
+        let mut browser_guard = self.browser.lock().await;
         let browser = browser_guard
-            .as_ref()
+            .as_mut()
             .context("Browser session not initialized")?;
+
+        // Ensure we're on the home page — exportData may behave differently on plan pages
+        browser.navigate_to_home().await
+            .context("Failed to navigate home before export")?;
 
         let result = browser
             .call_plugin_api("exportData", vec![])
             .await
             .context("Failed to export data from ProjectionLab")?;
 
-        let export: FullExport = serde_json::from_value(result)
-            .context("Failed to parse exported data")?;
+        let export: FullExport = serde_json::from_value(result.clone())
+            .context(format!(
+                "Failed to parse exported data. Top-level keys: {:?}",
+                result.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            ))?;
 
         info!("Successfully fetched data from ProjectionLab");
         Ok(export)

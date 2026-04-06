@@ -23,6 +23,46 @@ async fn main() -> Result<()> {
     let mut browser = BrowserSession::new().await?;
     eprintln!("Connected!\n");
 
+    // --- 0. Test export deserialization ---
+    eprintln!("=== 0. Test export deserialization ===");
+    let raw = browser.call_plugin_api("exportData", vec![]).await?;
+    eprintln!(
+        "  Top-level keys: {:?}",
+        raw.as_object().map(|o| o.keys().collect::<Vec<_>>())
+    );
+    match serde_json::from_value::<FullExport>(raw.clone()) {
+        Ok(_) => eprintln!("  FullExport parsed OK\n"),
+        Err(e) => {
+            eprintln!("  !! FullExport parse FAILED: {}", e);
+            // Try each top-level field individually to narrow down
+            for key in ["meta", "today", "plans", "settings", "progress"] {
+                if let Some(val) = raw.get(key) {
+                    let result = match key {
+                        "meta" => serde_json::from_value::<projectionlab_mcp::models::Meta>(val.clone())
+                            .map(|_| ()),
+                        "today" => serde_json::from_value::<projectionlab_mcp::models::StartingConditions>(val.clone())
+                            .map(|_| ()),
+                        "plans" => serde_json::from_value::<Vec<projectionlab_mcp::models::Plan>>(val.clone())
+                            .map(|_| ()),
+                        "settings" => serde_json::from_value::<projectionlab_mcp::models::Settings>(val.clone())
+                            .map(|_| ()),
+                        "progress" => serde_json::from_value::<projectionlab_mcp::models::Progress>(val.clone())
+                            .map(|_| ()),
+                        _ => Ok(()),
+                    };
+                    match result {
+                        Ok(_) => eprintln!("    {}: OK", key),
+                        Err(e2) => eprintln!("    {}: FAILED - {}", key, e2),
+                    }
+                } else {
+                    eprintln!("    {}: MISSING from export", key);
+                }
+            }
+            eprintln!();
+            anyhow::bail!("Export deserialization failed: {}", e);
+        }
+    }
+
     // Helper: export and parse
     let export = || async {
         let raw = browser.call_plugin_api("exportData", vec![]).await?;

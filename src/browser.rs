@@ -415,6 +415,13 @@ impl BrowserSession {
         Ok(())
     }
 
+    /// Navigate back to the ProjectionLab home page.
+    /// This ensures plugin API calls (exportData, etc.) run in a consistent context
+    /// rather than on a plan-specific page which may alter the response.
+    pub async fn navigate_to_home(&mut self) -> Result<()> {
+        self.navigate_to("/").await
+    }
+
     /// Execute arbitrary JavaScript in the browser and return the result as JSON
     pub async fn execute_js(&self, script: &str) -> Result<Value> {
         info!("Executing JS ({} chars)", script.len());

@@ -51,6 +51,8 @@ impl ProjectionLabServer {
 
     /// Navigate to a plan page, wait for simulation, execute async JS, and return the result.
     /// Skips navigation if the browser is already on the same plan page.
+    /// Always navigates back to the home page afterward so plugin API calls (exportData, etc.)
+    /// run in a consistent context.
     async fn run_plan_js(
         &self,
         plan_id: &str,
@@ -71,6 +73,11 @@ impl ProjectionLabServer {
 
         let result = browser.execute_js_async(script).await.map_err(|e| {
             McpError::internal_error(format!("JS execution failed: {}", e), None)
+        })?;
+
+        // Navigate back to home so plugin API calls run in a consistent context
+        browser.navigate_to_home().await.map_err(|e| {
+            McpError::internal_error(format!("Failed to navigate home after plan JS: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(
@@ -97,7 +104,7 @@ impl ProjectionLabServer {
         let result = browser
             .call_plugin_api("updateAccount", args)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Account {} updated successfully: {}",
@@ -116,7 +123,7 @@ impl ProjectionLabServer {
         let result = browser
             .call_plugin_api("exportData", vec![])
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&result).unwrap_or_default(),
@@ -136,7 +143,7 @@ impl ProjectionLabServer {
         let result = browser
             .call_plugin_api("restoreCurrentFinances", vec![json!(params.new_state)])
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Current Finances restored successfully: {}",
@@ -152,7 +159,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(json!(params.new_plans))
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(
             "Plans restored successfully".to_string()
@@ -167,7 +174,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_progress(json!(params.new_progress))
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(
             "Progress restored successfully".to_string()
@@ -182,7 +189,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_settings(json!(params.new_settings))
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(
             "Settings restored successfully".to_string()
@@ -198,7 +205,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let mut accounts = Vec::new();
 
@@ -291,7 +298,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         // Search in savings accounts
         if let Some(account) = data
@@ -376,7 +383,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         // Generate a new ID if not provided
         let account_id = params
@@ -442,7 +449,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_current_finances(new_finances)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Account created successfully with ID: {}",
@@ -461,7 +468,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let mut found = false;
 
@@ -564,7 +571,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_current_finances(new_finances)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Account {} updated successfully",
@@ -581,7 +588,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let mut found = false;
 
@@ -638,7 +645,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_current_finances(new_finances)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Account {} balance updated to {}",
@@ -655,7 +662,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let mut found = false;
 
@@ -712,7 +719,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_current_finances(new_finances)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Account {} deleted successfully",
@@ -728,7 +735,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plans: Vec<JsonValue> = data
             .plans
@@ -770,7 +777,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -794,7 +801,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -823,7 +830,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -859,7 +866,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Plan '{}' variables updated successfully",
@@ -876,7 +883,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let source = data
             .plans
@@ -905,7 +912,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Plan cloned successfully. New plan '{}' with ID: {}",
@@ -922,7 +929,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let new_id = format!("plan_{}", chrono::Utc::now().timestamp_millis());
         let now = chrono::Utc::now().timestamp_millis();
@@ -982,7 +989,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Plan '{}' created successfully with ID: {}",
@@ -1006,7 +1013,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let idx = data
             .plans
@@ -1026,7 +1033,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Plan '{}' ({}) deleted successfully",
@@ -1043,7 +1050,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1075,7 +1082,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1107,7 +1114,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Milestone created successfully with ID: {}",
@@ -1124,7 +1131,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1169,7 +1176,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Milestone '{}' updated successfully",
@@ -1186,7 +1193,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1216,7 +1223,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Milestone '{}' deleted successfully",
@@ -1251,7 +1258,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1279,7 +1286,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Plan '{}' metadata updated successfully",
@@ -1298,7 +1305,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1348,7 +1355,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1380,7 +1387,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Expense created successfully with ID: {}",
@@ -1397,7 +1404,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1443,7 +1450,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Expense '{}' updated successfully",
@@ -1460,7 +1467,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1491,7 +1498,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Expense '{}' deleted successfully",
@@ -1510,7 +1517,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1561,7 +1568,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1593,7 +1600,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Income event created successfully with ID: {}",
@@ -1610,7 +1617,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1656,7 +1663,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Income event '{}' updated successfully",
@@ -1673,7 +1680,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1704,7 +1711,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Income event '{}' deleted successfully",
@@ -1723,7 +1730,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let data_point = crate::models::ProgressDataPoint {
             date: params.date,
@@ -1748,7 +1755,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_progress(progress_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(
             "Progress data point added successfully".to_string(),
@@ -1764,7 +1771,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let filtered: Vec<&crate::models::ProgressDataPoint> = data
             .progress
@@ -1806,7 +1813,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1858,7 +1865,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1890,7 +1897,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Priority created successfully with ID: {}",
@@ -1907,7 +1914,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let plan = data
             .plans
@@ -1953,7 +1960,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .update_plans(plans_value)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Priority '{}' updated successfully",
@@ -1973,11 +1980,14 @@ impl ProjectionLabServer {
             McpError::internal_error("Browser session not initialized", None)
         })?;
 
-        if let Some(path) = &params.navigate_to {
+        let navigated = if let Some(path) = &params.navigate_to {
             browser.navigate_to(path).await.map_err(|e| {
                 McpError::internal_error(format!("Navigation failed: {}", e), None)
             })?;
-        }
+            true
+        } else {
+            false
+        };
 
         let result = if params.r#async {
             browser.execute_js_async(&params.script).await
@@ -1985,6 +1995,14 @@ impl ProjectionLabServer {
             browser.execute_js(&params.script).await
         }
         .map_err(|e| McpError::internal_error(format!("JS execution failed: {}", e), None))?;
+
+        // Navigate back to home if we navigated away, so plugin API calls
+        // run in a consistent context
+        if navigated {
+            browser.navigate_to_home().await.map_err(|e| {
+                McpError::internal_error(format!("Failed to navigate home: {}", e), None)
+            })?;
+        }
 
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&result).unwrap_or_else(|_| format!("{:?}", result)),
@@ -2298,7 +2316,7 @@ impl ProjectionLabServer {
             .sync_manager
             .get_data()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         let mut updated = Vec::new();
         let mut not_found = Vec::new();
@@ -2358,7 +2376,7 @@ impl ProjectionLabServer {
             self.sync_manager
                 .update_current_finances(new_finances)
                 .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
         }
 
         Ok(CallToolResult::success(vec![Content::text(
@@ -2388,7 +2406,7 @@ impl ProjectionLabServer {
         self.sync_manager
             .refresh()
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(
             "Cache refreshed successfully".to_string()
@@ -2418,7 +2436,7 @@ impl ProjectionLabServer {
         let result = browser
             .call_plugin_api("validateApiKey", vec![])
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "API key validation result: {}",
