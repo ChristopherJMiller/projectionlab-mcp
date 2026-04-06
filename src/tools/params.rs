@@ -232,6 +232,92 @@ pub struct PlanEventDeleteParams {
     pub event_id: String,
 }
 
+// ---- Starting Asset tools (Current Finances) ----
+
+/// Parameters for listing starting assets
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct StartingAssetsListParams {
+    /// Filter by asset type (e.g., "car", "real-estate", "other")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_type: Option<String>,
+    /// Filter by owner
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+}
+
+/// Parameters for getting a starting asset by ID
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct StartingAssetsGetParams {
+    /// The ID of the starting asset to retrieve
+    pub asset_id: String,
+}
+
+/// Parameters for creating a new starting asset
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct StartingAssetsCreateParams {
+    /// The asset data as a JSON object. Must include: name, title, type, icon, color, owner, balance.
+    pub data: JsonMap<String, JsonValue>,
+}
+
+/// Parameters for updating a starting asset
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct StartingAssetsUpdateParams {
+    /// The ID of the starting asset to update
+    pub asset_id: String,
+    /// The updated fields as a JSON object (partial updates supported)
+    pub data: JsonMap<String, JsonValue>,
+}
+
+/// Parameters for deleting a starting asset
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct StartingAssetsDeleteParams {
+    /// The ID of the starting asset to delete
+    pub asset_id: String,
+}
+
+// ---- Debt tools (Current Finances) ----
+
+/// Parameters for listing debts
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct DebtsListParams {
+    /// Filter by debt type (e.g., "mortgage", "auto-loan", "student-loan", "credit-card")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debt_type: Option<String>,
+    /// Filter by owner
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+}
+
+/// Parameters for getting a debt by ID
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct DebtsGetParams {
+    /// The ID of the debt to retrieve
+    pub debt_id: String,
+}
+
+/// Parameters for creating a new debt
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct DebtsCreateParams {
+    /// The debt data as a JSON object. Must include: name, title, type, icon, color, owner, balance.
+    pub data: JsonMap<String, JsonValue>,
+}
+
+/// Parameters for updating a debt
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct DebtsUpdateParams {
+    /// The ID of the debt to update
+    pub debt_id: String,
+    /// The updated fields as a JSON object (partial updates supported)
+    pub data: JsonMap<String, JsonValue>,
+}
+
+/// Parameters for deleting a debt
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct DebtsDeleteParams {
+    /// The ID of the debt to delete
+    pub debt_id: String,
+}
+
 // ---- Progress tools ----
 
 /// Parameters for adding a progress data point
@@ -329,4 +415,15 @@ pub struct BalanceMapping {
 pub struct SyncAccountBalancesParams {
     /// List of account balance mappings to update
     pub mappings: Vec<BalanceMapping>,
+}
+
+// ---- Schema help ----
+
+/// Parameters for looking up field documentation for a ProjectionLab entity type
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct SchemaHelpParams {
+    /// The entity type to get documentation for. Use "topics" to list all available topics.
+    /// Available: topics, date_or_milestone, yearly_change, expense, income, priority,
+    /// account, plan_account, asset, starting_asset, debt, withdrawal_strategy, milestone
+    pub topic: String,
 }

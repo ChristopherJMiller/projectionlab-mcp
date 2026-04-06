@@ -2,6 +2,7 @@
 use super::common::{AssumptionsMode, BondAllocationType, DateOrMilestone, Owner};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Container for account events
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -76,4 +77,8 @@ pub struct AccountEvent {
     pub rmd_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub withdraw_contribs_free: Option<bool>,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }

@@ -2,6 +2,7 @@
 use super::common::{DateOrMilestone, Owner, YearlyChange};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Container for expense events
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -51,4 +52,8 @@ pub struct ExpenseEvent {
     pub spending_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fund_with_account: Option<bool>,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }

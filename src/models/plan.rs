@@ -11,6 +11,7 @@ use super::starting_asset::StartingAsset;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// A complete ProjectionLab plan
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -44,6 +45,10 @@ pub struct Plan {
     pub withdrawal_strategy: WithdrawalStrategy,
     pub montecarlo: MonteCarloSettings,
     pub meta: PlanMeta,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 /// Starting conditions for a plan
@@ -82,6 +87,10 @@ pub struct StartingConditions {
     pub investment_accounts: Vec<StartingAccount>,
     pub assets: Vec<StartingAsset>,
     pub debts: Vec<DebtAccount>,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -129,6 +138,10 @@ pub struct StartingAccount {
     pub dividend_tax_type: Option<AssumptionsMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dividends_are_passive_income: Option<bool>,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 /// Simulation variables and settings
@@ -225,6 +238,10 @@ pub struct Variables {
     // Estate planning
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estate: Option<EstateSettings>,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 /// Estate planning settings
@@ -337,6 +354,10 @@ pub struct WithdrawalStrategy {
     #[serde(rename = "clyatt-95%")]
     pub clyatt_95: StrategySettings,
     pub guyton_klinger: GuytonKlingerSettings,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -439,6 +460,10 @@ pub struct MonteCarloSettings {
     pub crypto_return: String,
     pub crypto_return_mean: f64,
     pub crypto_return_std_dev: f64,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 /// Plan metadata

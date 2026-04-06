@@ -2,6 +2,7 @@
 use super::common::{AmountType, DateOrMilestone, Owner};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Container for priority events
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -86,4 +87,8 @@ pub struct PriorityEvent {
     pub tap_fund: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tap_rate: Option<f64>,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }

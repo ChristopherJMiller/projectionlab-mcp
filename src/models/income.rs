@@ -2,6 +2,7 @@
 use super::common::{AmountType, DateOrMilestone, Owner, YearlyChange};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Container for income events
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -101,4 +102,8 @@ pub struct IncomeEvent {
     pub wage: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prevent_overflow: Option<bool>,
+
+    /// Catch-all for any fields not explicitly defined above.
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
