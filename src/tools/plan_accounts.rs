@@ -120,7 +120,7 @@ pub async fn update(
     // Grab the linked Current Finances account ID before mutating
     let linked_account_id = account.account_id.clone();
 
-    // Extract shared fields that need to propagate to Current Finances
+    // Extract shared fields that need to propagate
     let shared_updates: JsonMap<String, JsonValue> = params
         .data
         .iter()
@@ -128,8 +128,18 @@ pub async fn update(
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
+    // 1. Update the plan account event itself
     merge_json_fields(account, &params.data)?;
 
+    // 2. Also update the plan's starting_conditions snapshot (used when
+    //    startingConditionsType is "custom"). Find by account_id match.
+    if let Some(ref cf_id) = linked_account_id {
+        if !shared_updates.is_empty() {
+            try_merge_starting_conditions(&mut plan.starting_conditions, cf_id, &shared_updates)?;
+        }
+    }
+
+    // Send updated plans in one call
     let plans_value = serde_json::to_value(&data.plans).map_err(|e| {
         McpError::internal_error(format!("Failed to serialize plans: {}", e), None)
     })?;
@@ -138,7 +148,7 @@ pub async fn update(
         .await
         .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
-    // Propagate shared fields to the linked Current Finances account
+    // 3. Propagate shared fields to the global Current Finances account
     let mut cf_updated = false;
     if let Some(ref cf_id) = linked_account_id {
         if !shared_updates.is_empty() {
@@ -148,7 +158,7 @@ pub async fn update(
                 .await
                 .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
 
-            let found = try_merge_current_finances(&mut data.today, cf_id, &shared_updates)?;
+            let found = try_merge_starting_conditions(&mut data.today, cf_id, &shared_updates)?;
 
             if found {
                 let new_finances = serde_json::to_value(&data.today).map_err(|e| {
@@ -183,14 +193,15 @@ pub async fn update(
     Ok(CallToolResult::success(vec![Content::text(msg)]))
 }
 
-/// Try to find and merge updates into the matching Current Finances account
-/// (savings or investment). Returns true if the account was found and updated.
-fn try_merge_current_finances(
-    today: &mut crate::models::plan::StartingConditions,
+/// Try to find and merge updates into the matching account within a
+/// `StartingConditions` (used for both global Current Finances and
+/// per-plan starting_conditions snapshots). Returns true if found.
+fn try_merge_starting_conditions(
+    sc: &mut crate::models::plan::StartingConditions,
     account_id: &str,
     updates: &JsonMap<String, JsonValue>,
 ) -> Result<bool, McpError> {
-    if let Some(account) = today
+    if let Some(account) = sc
         .savings_accounts
         .iter_mut()
         .find(|a| a.id == account_id)
@@ -199,7 +210,7 @@ fn try_merge_current_finances(
         return Ok(true);
     }
 
-    if let Some(account) = today
+    if let Some(account) = sc
         .investment_accounts
         .iter_mut()
         .find(|a| a.id == account_id)
