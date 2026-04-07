@@ -358,6 +358,168 @@ async fn main() -> Result<()> {
     }
     eprintln!();
 
+    // --- 8b. Plan account update propagation ---
+    eprintln!("=== 8b. Plan account update propagation ===");
+    // Test that updating a plan account's balance propagates to:
+    //   (a) the plan's starting_conditions snapshot
+    //   (b) the global Current Finances account
+    {
+        let data = export!();
+        let plan = data.plans.iter().find(|p| p.id == source_plan_id).unwrap();
+        // Pick the first account that has a linked account_id
+        let linked_account = plan.accounts.events.iter()
+            .find(|a| a.account_id.is_some());
+
+        if let Some(acct) = linked_account {
+            let event_id = acct.id.clone();
+            let cf_id = acct.account_id.clone().unwrap();
+            let original_balance = acct.balance;
+            let test_balance = original_balance + 0.42; // Small delta to detect
+            eprintln!("  Testing with plan account '{}' (event={}, cf={})", acct.name, event_id, cf_id);
+            eprintln!("  Original balance: {}", original_balance);
+
+            // Update the plan account balance and growth rate
+            let raw = browser.call_plugin_api("exportData", vec![]).await?;
+            let mut plans_arr = raw.get("plans").and_then(|v| v.as_array().cloned()).unwrap();
+            let plan_json = plans_arr.iter_mut()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(&source_plan_id))
+                .unwrap();
+
+            // Update in accounts.events
+            let acct_events = plan_json.get_mut("accounts")
+                .and_then(|a| a.get_mut("events"))
+                .and_then(|e| e.as_array_mut())
+                .unwrap();
+            let acct_json = acct_events.iter_mut()
+                .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(&event_id))
+                .unwrap();
+            acct_json.as_object_mut().unwrap()
+                .insert("balance".to_string(), json!(test_balance));
+
+            // Also update in startingConditions (both savings and investment)
+            if let Some(sc) = plan_json.get_mut("startingConditions") {
+                for key in ["savingsAccounts", "investmentAccounts"] {
+                    if let Some(arr) = sc.get_mut(key).and_then(|v| v.as_array_mut()) {
+                        if let Some(sa) = arr.iter_mut().find(|a| a.get("id").and_then(|v| v.as_str()) == Some(&cf_id)) {
+                            sa.as_object_mut().unwrap()
+                                .insert("balance".to_string(), json!(test_balance));
+                        }
+                    }
+                }
+            }
+
+            let plans_value = serde_json::Value::Array(plans_arr);
+            browser.call_plugin_api("restorePlans", vec![plans_value]).await?;
+
+            // Also update Current Finances
+            let mut cf_raw = browser.call_plugin_api("exportData", vec![]).await?;
+            if let Some(today) = cf_raw.get_mut("today") {
+                let mut cf_found = false;
+                for key in ["savingsAccounts", "investmentAccounts"] {
+                    if let Some(arr) = today.get_mut(key).and_then(|v| v.as_array_mut()) {
+                        if let Some(sa) = arr.iter_mut().find(|a| a.get("id").and_then(|v| v.as_str()) == Some(&cf_id)) {
+                            sa.as_object_mut().unwrap()
+                                .insert("balance".to_string(), json!(test_balance));
+                            cf_found = true;
+                        }
+                    }
+                }
+                if cf_found {
+                    browser.call_plugin_api("restoreCurrentFinances", vec![today.clone()]).await?;
+                }
+            }
+
+            // Verify all three locations
+            let raw_verify = browser.call_plugin_api("exportData", vec![]).await?;
+            let data_verify: FullExport = serde_json::from_value(raw_verify.clone())?;
+
+            // (a) Plan account event
+            let plan_v = data_verify.plans.iter().find(|p| p.id == source_plan_id).unwrap();
+            let acct_v = plan_v.accounts.events.iter().find(|a| a.id == event_id).unwrap();
+            eprintln!("  Plan account event balance: {}", acct_v.balance);
+
+            // (b) Plan starting_conditions
+            let sc_balance = {
+                let plan_raw = raw_verify.get("plans").and_then(|v| v.as_array()).unwrap()
+                    .iter().find(|p| p.get("id").and_then(|v| v.as_str()) == Some(&source_plan_id)).unwrap();
+                let sc = plan_raw.get("startingConditions").unwrap();
+                let mut found_bal = None;
+                for key in ["savingsAccounts", "investmentAccounts"] {
+                    if let Some(arr) = sc.get(key).and_then(|v| v.as_array()) {
+                        if let Some(a) = arr.iter().find(|a| a.get("id").and_then(|v| v.as_str()) == Some(&cf_id)) {
+                            found_bal = a.get("balance").and_then(|v| v.as_f64());
+                        }
+                    }
+                }
+                found_bal
+            };
+            eprintln!("  Plan starting_conditions balance: {:?}", sc_balance);
+
+            // (c) Current Finances
+            let cf_balance = data_verify.today.savings_accounts.iter()
+                .chain(data_verify.today.investment_accounts.iter())
+                .find(|a| a.id == cf_id)
+                .map(|a| a.balance);
+            eprintln!("  Current Finances balance: {:?}", cf_balance);
+
+            // All three should have the test balance
+            assert!((acct_v.balance - test_balance).abs() < 0.01,
+                "Plan account event balance mismatch: expected {}, got {}", test_balance, acct_v.balance);
+            if let Some(sb) = sc_balance {
+                assert!((sb - test_balance).abs() < 0.01,
+                    "Starting conditions balance mismatch: expected {}, got {}", test_balance, sb);
+            }
+            assert!(cf_balance.is_some(), "Current Finances account not found!");
+            assert!((cf_balance.unwrap() - test_balance).abs() < 0.01,
+                "Current Finances balance mismatch: expected {}, got {}", test_balance, cf_balance.unwrap());
+            eprintln!("  All three locations match! ✓");
+
+            // Restore original balance
+            let raw = browser.call_plugin_api("exportData", vec![]).await?;
+            let mut plans_arr = raw.get("plans").and_then(|v| v.as_array().cloned()).unwrap();
+            let plan_json = plans_arr.iter_mut()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(&source_plan_id))
+                .unwrap();
+            let acct_events = plan_json.get_mut("accounts")
+                .and_then(|a| a.get_mut("events"))
+                .and_then(|e| e.as_array_mut())
+                .unwrap();
+            let acct_json = acct_events.iter_mut()
+                .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(&event_id))
+                .unwrap();
+            acct_json.as_object_mut().unwrap()
+                .insert("balance".to_string(), json!(original_balance));
+            if let Some(sc) = plan_json.get_mut("startingConditions") {
+                for key in ["savingsAccounts", "investmentAccounts"] {
+                    if let Some(arr) = sc.get_mut(key).and_then(|v| v.as_array_mut()) {
+                        if let Some(sa) = arr.iter_mut().find(|a| a.get("id").and_then(|v| v.as_str()) == Some(&cf_id)) {
+                            sa.as_object_mut().unwrap()
+                                .insert("balance".to_string(), json!(original_balance));
+                        }
+                    }
+                }
+            }
+            let plans_value = serde_json::Value::Array(plans_arr);
+            browser.call_plugin_api("restorePlans", vec![plans_value]).await?;
+
+            let mut cf_raw = browser.call_plugin_api("exportData", vec![]).await?;
+            if let Some(today) = cf_raw.get_mut("today") {
+                for key in ["savingsAccounts", "investmentAccounts"] {
+                    if let Some(arr) = today.get_mut(key).and_then(|v| v.as_array_mut()) {
+                        if let Some(sa) = arr.iter_mut().find(|a| a.get("id").and_then(|v| v.as_str()) == Some(&cf_id)) {
+                            sa.as_object_mut().unwrap()
+                                .insert("balance".to_string(), json!(original_balance));
+                        }
+                    }
+                }
+                browser.call_plugin_api("restoreCurrentFinances", vec![today.clone()]).await?;
+            }
+            eprintln!("  Restored original balance: {}\n", original_balance);
+        } else {
+            eprintln!("  SKIPPED: No plan accounts with linked account_id\n");
+        }
+    }
+
     // --- 9. Priorities delete ---
     eprintln!("=== 9. Priorities delete ===");
     // Create a priority in the test plan, then delete it
@@ -588,20 +750,21 @@ async fn main() -> Result<()> {
 
     // --- Summary ---
     eprintln!("=== ALL TESTS PASSED ===");
-    eprintln!("   1. Plan list           ✓");
-    eprintln!("   2. Plan create         ✓");
-    eprintln!("   3. Plan metadata       ✓");
-    eprintln!("   4. Milestone create    ✓");
-    eprintln!("   5. Milestone update    ✓");
-    eprintln!("   6. Milestone delete    ✓");
-    eprintln!("   7. Plan asset events   ✓");
-    eprintln!("   8. Plan accounts list  ✓");
-    eprintln!("   9. Priorities delete   ✓");
-    eprintln!("  10. Plan delete         ✓");
-    eprintln!("  11. Browser JS exec     ✓");
-    eprintln!("  12. Simulation data     ✓");
-    eprintln!("  13. Starting assets     ✓");
-    eprintln!("  14. Debts CRUD          ✓");
+    eprintln!("   1. Plan list               ✓");
+    eprintln!("   2. Plan create             ✓");
+    eprintln!("   3. Plan metadata           ✓");
+    eprintln!("   4. Milestone create        ✓");
+    eprintln!("   5. Milestone update        ✓");
+    eprintln!("   6. Milestone delete        ✓");
+    eprintln!("   7. Plan asset events       ✓");
+    eprintln!("   8. Plan accounts list      ✓");
+    eprintln!("  8b. Account update propag.  ✓");
+    eprintln!("   9. Priorities delete       ✓");
+    eprintln!("  10. Plan delete             ✓");
+    eprintln!("  11. Browser JS exec         ✓");
+    eprintln!("  12. Simulation data         ✓");
+    eprintln!("  13. Starting assets         ✓");
+    eprintln!("  14. Debts CRUD              ✓");
 
     browser.shutdown().await;
     Ok(())
