@@ -93,6 +93,9 @@ pub enum Frequency {
 pub enum AssumptionsMode {
     Fixed,
     Plan,
+    /// No growth/return applied (ProjectionLab added this option; the
+    /// associated rate is ignored when set).
+    None,
 }
 
 /// Bond allocation type

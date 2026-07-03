@@ -84,6 +84,22 @@ fn starting_account_roundtrip() {
 }
 
 #[test]
+fn assumptions_mode_accepts_none() {
+    // ProjectionLab added a "none" growth/return option. Previously the export
+    // failed to parse with: unknown variant `none`, expected `fixed` or `plan`.
+    for variant in ["fixed", "plan", "none"] {
+        let mode: projectionlab_mcp::models::common::AssumptionsMode =
+            serde_json::from_value(json!(variant))
+            .unwrap_or_else(|e| panic!("Failed to parse AssumptionsMode {variant:?}: {e}"));
+        assert_eq!(
+            serde_json::to_value(&mode).unwrap(),
+            json!(variant),
+            "AssumptionsMode {variant:?} should roundtrip"
+        );
+    }
+}
+
+#[test]
 fn expense_event_roundtrip() {
     let data = load_fixture();
     for plan in &data.plans {
