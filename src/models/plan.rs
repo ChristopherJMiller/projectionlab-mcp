@@ -118,7 +118,8 @@ pub struct StartingAccount {
     pub investment_growth_rate: f64,
     pub investment_growth_type: AssumptionsMode,
     pub dividend_rate: f64,
-    pub dividend_type: BondAllocationType,
+    pub dividend_type: AssumptionsMode,
+    #[serde(default)]
     pub is_passive_income: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repurpose: Option<bool>,
@@ -224,10 +225,14 @@ pub struct Variables {
     pub medicare: bool,
     pub irmaa: bool,
 
-    // Bond allocation
-    pub bond_allocation_type: BondAllocationType,
-    pub bond_allocation: Vec<BondAllocationPoint>,
-    pub bond_location: BondLocation,
+    // Bond allocation (newer plans replace these with a `bondSettings` object,
+    // captured in `extra`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bond_allocation_type: Option<BondAllocationType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bond_allocation: Option<Vec<BondAllocationPoint>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bond_location: Option<BondLocation>,
 
     // Other settings
     pub drawdown_order: Vec<String>,

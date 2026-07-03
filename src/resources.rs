@@ -273,7 +273,7 @@ impl ResourceProvider {
                     id: event.id.clone(),
                     name: event.name.clone(),
                     expense_type: expense_type.clone(),
-                    amount: event.amount,
+                    amount: event.amount.unwrap_or(0.0),
                     frequency: event.frequency.clone(),
                     uri: format!("projectionlab://plans/{}/expenses/{}", plan.id, event.id),
                 });

@@ -19,16 +19,22 @@ pub struct ExpenseEvent {
     pub name: String,
     #[serde(rename = "type")]
     pub event_type: String,
-    pub title: String,
+    // Auto-generated events (e.g. "medicare") omit these spending-shape fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub icon: String,
-    pub key: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<f64>,
 
     // Amount and timing
-    pub amount: f64,
-    pub amount_type: String, // "today$", "$", "%"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount_type: Option<String>, // "today$", "$", "%"
     pub owner: Owner,
     pub start: DateOrMilestone,
-    pub end: DateOrMilestone,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<DateOrMilestone>,
 
     // Frequency
     pub frequency: String,

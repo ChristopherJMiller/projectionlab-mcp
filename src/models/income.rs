@@ -49,8 +49,12 @@ pub struct IncomeEvent {
 
     // Tax settings
     pub tax_exempt: bool,
-    pub tax_withholding: bool,
-    pub withhold: f64,
+    // Newer events use taxCharacter/withholdingMode/withholdingRate (captured in
+    // `extra`) instead of these; older events still carry them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_withholding: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub withhold: Option<f64>,
 
     // Metadata
     pub plan_path: String,

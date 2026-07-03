@@ -48,3 +48,6 @@ backoff = { version = "0.4", features = ["tokio"] }
 
 # XDG/platform directories
 dirs = "6"
+
+[dev-dependencies]
+serde_path_to_error = "0.1.20"

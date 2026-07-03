@@ -7,6 +7,23 @@ fn load_fixture() -> FullExport {
     serde_json::from_str(&json).expect("Failed to parse example.json")
 }
 
+/// Dev aid: parse the real (gitignored) export at debug-data/full_export.json,
+/// reporting the exact field path on failure. Skips when the file is absent
+/// (e.g. in CI), so it only bites when a real export can't be modeled.
+#[test]
+fn parse_local_debug_export() {
+    let path = "debug-data/full_export.json";
+    let Ok(json) = std::fs::read_to_string(path) else {
+        eprintln!("skipping: {path} not present");
+        return;
+    };
+    let de = &mut serde_json::Deserializer::from_str(&json);
+    let result: Result<FullExport, _> = serde_path_to_error::deserialize(de);
+    if let Err(e) = result {
+        panic!("Failed to parse {path} at `{}`: {e}", e.path());
+    }
+}
+
 // ---- Roundtrip tests: deserialize → serialize → deserialize produces identical data ----
 
 #[test]
@@ -81,6 +98,29 @@ fn starting_account_roundtrip() {
         assert_eq!(account.id, reparsed.id);
         assert_eq!(account.balance, reparsed.balance);
     }
+}
+
+#[test]
+fn starting_account_tolerates_missing_is_passive_income() {
+    // ProjectionLab omits isPassiveIncome on some accounts (e.g. created before
+    // the field existed). Previously this failed with: missing field
+    // `isPassiveIncome`. Strip it from a real fixture account and reparse.
+    let data = load_fixture();
+    let account = data
+        .today
+        .investment_accounts
+        .first()
+        .expect("fixture should have an investment account");
+    let mut value = serde_json::to_value(account).expect("serialize account");
+    value
+        .as_object_mut()
+        .expect("account is an object")
+        .remove("isPassiveIncome");
+
+    let reparsed: StartingAccount =
+        serde_json::from_value(value).expect("account without isPassiveIncome should parse");
+    assert_eq!(reparsed.id, account.id);
+    assert!(!reparsed.is_passive_income, "should default to false");
 }
 
 #[test]

@@ -1,5 +1,5 @@
 /// Account event types for ProjectionLab plans
-use super::common::{AssumptionsMode, BondAllocationType, DateOrMilestone, Owner};
+use super::common::{AssumptionsMode, DateOrMilestone, Owner};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -37,7 +37,8 @@ pub struct AccountEvent {
     pub investment_growth_rate: f64,
     pub investment_growth_type: AssumptionsMode,
     pub dividend_rate: f64,
-    pub dividend_type: BondAllocationType,
+    pub dividend_type: AssumptionsMode,
+    #[serde(default)]
     pub is_passive_income: bool,
 
     // Metadata
