@@ -115,7 +115,7 @@ impl ResourceProvider {
         )
     }
 
-    /// `projectionlab://accounts/{id}` (the legacy `accounts/{type}/{id}` form also works).
+    /// `projectionlab://accounts/{id}`
     async fn get_account_details(&self, uri: &str) -> Result<ReadResourceResult> {
         let data = self.sync.get_data().await?;
         let account_id = uri

@@ -8,7 +8,7 @@ use super::accounts::{self, AccountFilter};
 use super::doc::ToolResult;
 use super::params::*;
 
-pub async fn list(sync: &SyncManager, params: StartingAssetsListParams) -> ToolResult {
+pub async fn list(sync: &SyncManager, params: RealAssetsListParams) -> ToolResult {
     accounts::list_filtered(
         sync,
         AccountFilter {
@@ -21,18 +21,14 @@ pub async fn list(sync: &SyncManager, params: StartingAssetsListParams) -> ToolR
     .await
 }
 
-pub async fn get(sync: &SyncManager, params: StartingAssetsGetParams) -> ToolResult {
+pub async fn get(sync: &SyncManager, params: RealAssetsGetParams) -> ToolResult {
     accounts::get_kind(sync, &params.asset_id, Some(KIND_REAL_ASSET)).await
 }
 
-pub async fn create(sync: &SyncManager, params: StartingAssetsCreateParams) -> ToolResult {
+pub async fn create(sync: &SyncManager, params: RealAssetsCreateParams) -> ToolResult {
     accounts::create_item(sync, Some(KIND_REAL_ASSET), None, params.data).await
 }
 
-pub async fn update(sync: &SyncManager, params: StartingAssetsUpdateParams) -> ToolResult {
+pub async fn update(sync: &SyncManager, params: RealAssetsUpdateParams) -> ToolResult {
     accounts::update_item(sync, &params.asset_id, Some(KIND_REAL_ASSET), params.data).await
-}
-
-pub async fn delete(sync: &SyncManager, params: StartingAssetsDeleteParams) -> ToolResult {
-    accounts::archive_item(sync, &params.asset_id, Some(KIND_REAL_ASSET), None).await
 }

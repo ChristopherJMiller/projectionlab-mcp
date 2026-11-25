@@ -2,15 +2,15 @@
 //!
 //! ProjectionLab V5 keeps all three in one `currentFinances.accounts` map,
 //! distinguished by `kind` ("account", "debt", "real-asset"). The debts_* and
-//! starting_assets_* tools are kind-filtered views over these same handlers.
+//! real_assets_* tools are kind-filtered views over these same handlers.
 //!
 //! Write strategy:
 //! - value fields (balance, costBasis, value, purchasePrice) → `updateAccountValues`,
 //!   which also makes ProjectionLab record account history;
 //! - other fields → `updateAccount` (with `force`, so new optional fields may be set);
 //! - create / unarchive → edit the raw Current Finances document and `restoreCurrentFinances`;
-//! - delete → archive. The V5 Plugin API cannot hard-delete accounts
-//!   (restoreCurrentFinances merges accounts rather than replacing the map).
+//! - removal → archive (`archivedOn`). The V5 Plugin API cannot hard-delete
+//!   accounts (restoreCurrentFinances merges accounts rather than replacing the map).
 
 use crate::models::current_finances::{
     CurrentFinancesAccount, ACCOUNT_TYPES, DEBT_TYPES, KIND_ACCOUNT, KIND_DEBT, KIND_REAL_ASSET,
@@ -62,8 +62,6 @@ impl AccountFilter<'_> {
         if let Some(t) = self.account_type {
             let ok = match t {
                 "investment" => a.kind == KIND_ACCOUNT && a.account_type != "savings",
-                "debt" => a.kind == KIND_DEBT,
-                "asset" | "real-asset" => a.kind == KIND_REAL_ASSET,
                 other => a.account_type == other,
             };
             if !ok {
@@ -235,16 +233,16 @@ fn resolve_kind(kind: Option<&str>, account_type: &str) -> Result<&'static str, 
     }
 }
 
-/// Create a Current Finances item. `kind` may be forced by the debts_/starting_assets_ wrappers.
+/// Create a Current Finances item. `kind` may be forced by the debts_/real_assets_ wrappers.
 pub async fn create_item(
     sync: &SyncManager,
     kind: Option<&str>,
     account_type: Option<&str>,
     data: JsonMap<String, JsonValue>,
 ) -> ToolResult {
-    // Resolve type: explicit param (unless a legacy grouping) or data.type.
+    // Resolve type: explicit param, else data.type.
     let account_type = match account_type {
-        Some("investment") | Some("debt") | Some("asset") | None => data
+        None => data
             .get("type")
             .and_then(JsonValue::as_str)
             .map(str::to_string)
@@ -451,10 +449,6 @@ pub async fn archive_item(
 
 pub async fn archive(sync: &SyncManager, params: AccountsArchiveParams) -> ToolResult {
     archive_item(sync, &params.account_id, None, params.date).await
-}
-
-pub async fn delete(sync: &SyncManager, params: AccountsDeleteParams) -> ToolResult {
-    archive_item(sync, &params.account_id, None, None).await
 }
 
 pub async fn unarchive(sync: &SyncManager, params: AccountsUnarchiveParams) -> ToolResult {

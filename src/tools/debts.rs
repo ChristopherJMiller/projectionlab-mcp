@@ -31,7 +31,3 @@ pub async fn create(sync: &SyncManager, params: DebtsCreateParams) -> ToolResult
 pub async fn update(sync: &SyncManager, params: DebtsUpdateParams) -> ToolResult {
     accounts::update_item(sync, &params.debt_id, Some(KIND_DEBT), params.data).await
 }
-
-pub async fn delete(sync: &SyncManager, params: DebtsDeleteParams) -> ToolResult {
-    accounts::archive_item(sync, &params.debt_id, Some(KIND_DEBT), None).await
-}

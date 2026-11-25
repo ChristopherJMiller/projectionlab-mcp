@@ -57,8 +57,8 @@ pub struct AccountsListParams {
     /// Filter by kind: "account", "debt", or "real-asset"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
-    /// Filter by type (e.g. "savings", "taxable", "401k", "mortgage", "real-estate").
-    /// Also accepts the groupings "investment" (non-savings accounts) and "debt".
+    /// Filter by type (e.g. "savings", "taxable", "401k", "mortgage", "real-estate"),
+    /// or "investment" for all non-savings accounts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_type: Option<String>,
     /// Filter by owner ("me", "spouse", "joint")
@@ -81,7 +81,6 @@ pub struct AccountsGetParams {
 pub struct AccountsCreateParams {
     /// The ProjectionLab type, e.g. "savings", "taxable", "401k", "roth-ira", "hsa",
     /// "mortgage", "auto-loan", "student-loans", "real-estate", "car".
-    /// (Legacy values "investment" and "debt" are accepted if `data.type` is set.)
     pub account_type: String,
     /// Optional kind ("account", "debt", "real-asset"); inferred from the type if omitted
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,13 +107,6 @@ pub struct AccountsUpdateBalanceParams {
     pub account_id: String,
     /// The new balance (or value, for real assets)
     pub balance: f64,
-}
-
-/// Parameters for archiving (formerly deleting) an account
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct AccountsDeleteParams {
-    /// The ID of the account to archive
-    pub account_id: String,
 }
 
 /// Parameters for archiving an account
@@ -153,44 +145,15 @@ pub struct AccountHistoryParams {
     pub include_archived: bool,
 }
 
-/// Parameters accepted by the legacy progress_add_data_point / snapshot_net_worth tools.
-/// ProjectionLab V5 records history automatically, so these values are only echoed
-/// back for comparison against ProjectionLab's own net worth.
-#[derive(Debug, Default, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct ProgressAddDataPointParams {
-    /// Unix timestamp in milliseconds (ignored)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub date: Option<i64>,
-    /// Your computed net worth, compared against ProjectionLab's
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub net_worth: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub savings: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub taxable: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tax_deferred: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tax_free: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assets: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub debt: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub loans: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub crypto: Option<f64>,
-}
-
 /// Parameters for getting net worth history
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct ProgressGetHistoryParams {
-    /// Optional start date filter (unix timestamp in milliseconds)
+pub struct NetWorthHistoryParams {
+    /// Inclusive start date (ISO YYYY-MM-DD)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_date: Option<i64>,
-    /// Optional end date filter (unix timestamp in milliseconds)
+    pub start_date: Option<String>,
+    /// Inclusive end date (ISO YYYY-MM-DD)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_date: Option<i64>,
+    pub end_date: Option<String>,
 }
 
 // ---- Plan tools ----
@@ -329,7 +292,7 @@ pub struct PlanEventDeleteParams {
 
 /// Parameters for listing real assets
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct StartingAssetsListParams {
+pub struct RealAssetsListParams {
     /// Filter by asset type (e.g., "real-estate", "car", "other")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub asset_type: Option<String>,
@@ -343,14 +306,14 @@ pub struct StartingAssetsListParams {
 
 /// Parameters for getting a real asset by ID
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct StartingAssetsGetParams {
+pub struct RealAssetsGetParams {
     /// The ID of the asset to retrieve
     pub asset_id: String,
 }
 
 /// Parameters for creating a real asset
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct StartingAssetsCreateParams {
+pub struct RealAssetsCreateParams {
     /// Asset fields (camelCase). Must include `type` (e.g. "real-estate", "car") and `name`;
     /// typically `value` and `purchasePrice`.
     pub data: JsonMap<String, JsonValue>,
@@ -358,18 +321,11 @@ pub struct StartingAssetsCreateParams {
 
 /// Parameters for updating a real asset
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct StartingAssetsUpdateParams {
+pub struct RealAssetsUpdateParams {
     /// The ID of the asset to update
     pub asset_id: String,
     /// The updated fields as a JSON object (partial updates supported)
     pub data: JsonMap<String, JsonValue>,
-}
-
-/// Parameters for archiving a real asset
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct StartingAssetsDeleteParams {
-    /// The ID of the asset to archive
-    pub asset_id: String,
 }
 
 // ---- Debt tools (Current Finances, kind "debt") ----
@@ -410,13 +366,6 @@ pub struct DebtsUpdateParams {
     pub debt_id: String,
     /// The updated fields as a JSON object (partial updates supported)
     pub data: JsonMap<String, JsonValue>,
-}
-
-/// Parameters for archiving a debt
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct DebtsDeleteParams {
-    /// The ID of the debt to archive
-    pub debt_id: String,
 }
 
 // ---- Browser / Simulation tools ----

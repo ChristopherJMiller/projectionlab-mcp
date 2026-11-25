@@ -8,6 +8,6 @@ pub mod params;
 pub mod plan_accounts;
 pub mod plan_events;
 pub mod plans;
+pub mod real_assets;
 pub mod schema_help;
 pub mod simulation;
-pub mod starting_assets;

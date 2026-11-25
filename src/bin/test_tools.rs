@@ -132,11 +132,20 @@ async fn run(sync: &SyncManager) -> Result<()> {
         history::account_history(sync, AccountHistoryParams { account_id: Some(first_account), start_date: None, end_date: None, include_archived: false }).await,
     )?;
     eprintln!("  account_history: {} points", hist["accounts"][0]["points"].as_array().map_or(0, |p| p.len()));
-    let nw = payload(history::get_history(sync, ProgressGetHistoryParams { start_date: None, end_date: None }).await)?;
-    eprintln!("  progress_get_history: {} points, latest net worth {}", nw["total_data_points"], nw["latest"]["netWorth"]);
+    let nw = payload(history::net_worth_history(sync, NetWorthHistoryParams { start_date: None, end_date: None }).await)?;
+    eprintln!("  net_worth_history: {} points, latest {} on {}", nw["total_data_points"], nw["latest"]["netWorth"], nw["latest"]["date"]);
     ensure!(nw["total_data_points"].as_u64().unwrap_or(0) > 0, "expected net worth history");
-    let snap = payload(history::snapshot(sync, ProgressAddDataPointParams::default()).await)?;
-    eprintln!("  snapshot_net_worth: current finances net worth {}", snap["current_finances_net_worth"]);
+    let cf_net_worth = sync.get_data().await?.current_finances().net_worth();
+    let history_net_worth = nw["latest"]["netWorth"].as_f64().unwrap_or(f64::NAN);
+    if nw["settled"] == json!(true) {
+        ensure!(
+            (cf_net_worth - history_net_worth).abs() < 0.01,
+            "latest history net worth {} != Current Finances net worth {}",
+            history_net_worth,
+            cf_net_worth
+        );
+        eprintln!("  history matches Current Finances net worth ({})", cf_net_worth);
+    }
 
     step!("2. Create test plan");
     let test_name = format!("{}{}", TEST_PLAN_PREFIX, chrono::Utc::now().timestamp_millis());

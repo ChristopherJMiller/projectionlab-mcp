@@ -129,13 +129,17 @@ Call `schema_help` with `topic: "topics"` for field-level docs (`v5_changes` sum
 
 | Area | Tools |
 |------|-------|
-| Current Finances | `accounts_list`, `accounts_get`, `accounts_create`, `accounts_update`, `accounts_update_balance`, `accounts_archive`, `accounts_unarchive`, `accounts_delete` (archives), `household_get` |
-| Real assets / debts | `starting_assets_*`, `debts_*` (list/get/create/update/delete — kind-filtered views of the account tools) |
+| Current Finances | `accounts_list`, `accounts_get`, `accounts_create`, `accounts_update`, `accounts_update_balance`, `accounts_archive`, `accounts_unarchive`, `household_get` |
+| Real assets | `real_assets_list`, `real_assets_get`, `real_assets_create`, `real_assets_update` (kind-filtered views of the account tools) |
+| Debts | `debts_list`, `debts_get`, `debts_create`, `debts_update` (kind-filtered views of the account tools) |
 | Plans | `plans_list`, `plans_get`, `plans_create`, `plans_clone`, `plans_delete`, `plans_get_variables`, `plans_update_variables`, `plans_update_metadata`, `plans_get_milestones` |
 | Milestones | `milestones_create`, `milestones_update`, `milestones_delete` (built-ins can be edited/hidden, not deleted) |
-| Plan events | `expenses_*`, `income_*`, `priorities_*`, `plan_assets_*` (list/create/update/delete) |
+| Expenses | `expenses_list`, `expenses_create`, `expenses_update`, `expenses_delete` |
+| Income | `income_list`, `income_create`, `income_update`, `income_delete` |
+| Priorities | `priorities_list`, `priorities_create`, `priorities_update`, `priorities_delete` |
+| Planned assets | `plan_assets_list`, `plan_assets_create`, `plan_assets_update`, `plan_assets_delete` |
 | Plan accounts | `plan_accounts_list`, `plan_accounts_update` (writes shared fields through to Current Finances) |
-| History | `progress_get_history` (net worth over time), `account_history`, `snapshot_net_worth` / `progress_add_data_point` (report only — V5 records history automatically) |
+| History | `net_worth_history`, `account_history` (ProjectionLab records history automatically when values change) |
 | Simulation | `plans_get_simulation_results`, `plans_get_year_snapshot`, `plans_get_year_range`, `plans_get_montecarlo_results` |
 | Integration | `sync_account_balances` (batch balance updates, e.g. from Monarch Money) |
 | System | `schema_help`, `refresh_cache`, `cache_status`, `validate_api_key`, `run_js_in_browser` |
@@ -143,7 +147,7 @@ Call `schema_help` with `topic: "topics"` for field-level docs (`v5_changes` sum
 
 Notes:
 
-- Balance changes go through `updateAccountValues`, so ProjectionLab records them in history.
+- Balance changes go through `updateAccountValues`, so ProjectionLab records them in history. Items are removed by archiving (`accounts_archive`); the plugin API cannot delete them.
 - `restore_plans` replaces **all** plans; any plan missing from the array is deleted. Prefer the targeted tools.
 - Simulation tools temporarily select the requested plan in the app, wait for a fresh projection, and restore the previously selected plan.
 - Monte Carlo results only exist after ProjectionLab's Chance of Success page has run them in the automated browser, so they are usually unavailable.

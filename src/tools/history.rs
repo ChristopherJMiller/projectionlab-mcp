@@ -17,11 +17,16 @@ use super::params::*;
 
 // ---- Per-account history (from the export) ----
 
-pub async fn account_history(sync: &SyncManager, params: AccountHistoryParams) -> ToolResult {
-    for d in [&params.start_date, &params.end_date].into_iter().flatten() {
+fn validate_iso_dates(dates: &[&Option<String>]) -> Result<(), rmcp::ErrorData> {
+    for d in dates.iter().copied().flatten() {
         chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
             .map_err(|_| err(format!("Invalid date `{}` (expected YYYY-MM-DD)", d)))?;
     }
+    Ok(())
+}
+
+pub async fn account_history(sync: &SyncManager, params: AccountHistoryParams) -> ToolResult {
+    validate_iso_dates(&[&params.start_date, &params.end_date])?;
     let data = sync.get_data().await.map_err(anyhow_err)?;
     let cf = data.current_finances();
     let start = params.start_date.as_deref();
@@ -120,9 +125,8 @@ const DEBT_SERIES: &[&str] = &["otherDebt", "realAssetLoans", "liquidDebt", "inv
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NetWorthPoint {
-    /// Midnight UTC of `iso_date`, in milliseconds (matches the legacy progress format)
-    pub date: i64,
-    pub iso_date: String,
+    /// ISO date (YYYY-MM-DD)
+    pub date: String,
     pub net_worth: f64,
     pub liquid_net_worth: f64,
     pub investable_assets: f64,
@@ -207,15 +211,8 @@ pub fn compute_net_worth_series(shards: &JsonValue) -> Vec<NetWorthPoint> {
         }
 
         let total_assets = sum_group("assets");
-        let timestamp = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
-            .ok()
-            .and_then(|d| d.and_hms_opt(0, 0, 0))
-            .map(|dt| dt.and_utc().timestamp_millis())
-            .unwrap_or(0);
-
         out.push(NetWorthPoint {
-            date: timestamp,
-            iso_date: date.clone(),
+            date: date.clone(),
             net_worth: round2(total_assets - get("otherDebt") - get("realAssetLoans")),
             liquid_net_worth: round2(sum_group("liquidAssets") - get("liquidDebt")),
             investable_assets: round2(sum_group("investableAssets")),
@@ -242,12 +239,13 @@ pub async fn load_net_worth_series(sync: &SyncManager) -> anyhow::Result<(Vec<Ne
     Ok((compute_net_worth_series(&shards), settled))
 }
 
-pub async fn get_history(sync: &SyncManager, params: ProgressGetHistoryParams) -> ToolResult {
+pub async fn net_worth_history(sync: &SyncManager, params: NetWorthHistoryParams) -> ToolResult {
+    validate_iso_dates(&[&params.start_date, &params.end_date])?;
     let (points, settled) = load_net_worth_series(sync).await.map_err(anyhow_err)?;
     let filtered: Vec<&NetWorthPoint> = points
         .iter()
-        .filter(|p| params.start_date.is_none_or(|s| p.date >= s))
-        .filter(|p| params.end_date.is_none_or(|e| p.date <= e))
+        .filter(|p| params.start_date.as_deref().is_none_or(|s| p.date.as_str() >= s))
+        .filter(|p| params.end_date.as_deref().is_none_or(|e| p.date.as_str() <= e))
         .collect();
 
     ok_json(&json!({
@@ -256,33 +254,6 @@ pub async fn get_history(sync: &SyncManager, params: ProgressGetHistoryParams) -
         "total_data_points": filtered.len(),
         "latest": points.last(),
         "data": filtered,
-    }))
-}
-
-/// Legacy `snapshot_net_worth` / `progress_add_data_point`: V5 records history
-/// automatically, so report ProjectionLab's current figures (and compare them
-/// with any values the caller computed) instead of writing a point.
-pub async fn snapshot(sync: &SyncManager, params: ProgressAddDataPointParams) -> ToolResult {
-    let data = sync.get_data().await.map_err(anyhow_err)?;
-    let cf_net_worth = round2(data.current_finances().net_worth());
-    drop(data);
-
-    let (latest, settled, series_error) = match load_net_worth_series(sync).await {
-        Ok((points, settled)) => (points.last().cloned(), settled, None),
-        Err(e) => (None, true, Some(format!("{:#}", e))),
-    };
-
-    let difference = params.net_worth.map(|provided| round2(provided - cf_net_worth));
-
-    ok_json(&json!({
-        "recorded": "automatically",
-        "message": "ProjectionLab V5 records net worth history automatically whenever account values change (e.g. via accounts_update_balance or sync_account_balances). Manual data points are no longer supported, so nothing was written.",
-        "current_finances_net_worth": cf_net_worth,
-        "latest_history_point": latest,
-        "history_settled": settled,
-        "history_error": series_error,
-        "provided": params,
-        "provided_minus_projectionlab": difference,
     }))
 }
 
@@ -305,7 +276,7 @@ mod tests {
             }
         });
         let points = compute_net_worth_series(&shards);
-        let dates: Vec<&str> = points.iter().map(|p| p.iso_date.as_str()).collect();
+        let dates: Vec<&str> = points.iter().map(|p| p.date.as_str()).collect();
         assert_eq!(dates, ["2025-11-01", "2025-12-01", "2026-01-15", "2026-02-01"]);
 
         // 2025-11-01: taxable 1000, debt 50
@@ -320,7 +291,6 @@ mod tests {
         assert_eq!(points[3].net_worth, 2100.0);
         assert_eq!(points[3].assets, 5000.0);
         assert_eq!(points[3].loans, 4000.0);
-        assert_eq!(points[3].date, 1769904000000);
     }
 
     #[test]

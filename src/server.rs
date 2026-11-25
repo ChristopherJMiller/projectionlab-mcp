@@ -5,8 +5,8 @@ use crate::tools::doc::{anyhow_err, err, ok_json, ok_text};
 use crate::tools::params::*;
 use crate::tools::plan_events::Section;
 use crate::tools::{
-    accounts, debts, history, plan_accounts, plan_events, plans, schema_help, simulation,
-    starting_assets,
+    accounts, debts, history, plan_accounts, plan_events, plans, real_assets, schema_help,
+    simulation,
 };
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -213,15 +213,7 @@ impl ProjectionLabServer {
         accounts::update_balance(&self.sync_manager, params).await
     }
 
-    #[tool(description = "Archive a Current Finances account (ProjectionLab V5 cannot delete accounts via its plugin API). Archived accounts stop counting toward net worth but keep their history; reverse with accounts_unarchive.")]
-    async fn accounts_delete(
-        &self,
-        Parameters(params): Parameters<AccountsDeleteParams>,
-    ) -> Result<CallToolResult, McpError> {
-        accounts::delete(&self.sync_manager, params).await
-    }
-
-    #[tool(description = "Archive a Current Finances account, debt, or real asset as of a date (default today). It stops counting toward net worth from that date; history is kept.")]
+    #[tool(description = "Archive a Current Finances account, debt, or real asset as of a date (default today); this is how items are removed (ProjectionLab's plugin API cannot delete them). It stops counting toward net worth from that date; history is kept. Reverse with accounts_unarchive.")]
     async fn accounts_archive(
         &self,
         Parameters(params): Parameters<AccountsArchiveParams>,
@@ -240,43 +232,35 @@ impl ProjectionLabServer {
     // ---- Current Finances: real assets ----
 
     #[tool(description = "List real assets in Current Finances (homes, cars, land, valuables; kind 'real-asset') with current value and purchase price")]
-    async fn starting_assets_list(
+    async fn real_assets_list(
         &self,
-        Parameters(params): Parameters<StartingAssetsListParams>,
+        Parameters(params): Parameters<RealAssetsListParams>,
     ) -> Result<CallToolResult, McpError> {
-        starting_assets::list(&self.sync_manager, params).await
+        real_assets::list(&self.sync_manager, params).await
     }
 
     #[tool(description = "Get full details of a Current Finances real asset by ID")]
-    async fn starting_assets_get(
+    async fn real_assets_get(
         &self,
-        Parameters(params): Parameters<StartingAssetsGetParams>,
+        Parameters(params): Parameters<RealAssetsGetParams>,
     ) -> Result<CallToolResult, McpError> {
-        starting_assets::get(&self.sync_manager, params).await
+        real_assets::get(&self.sync_manager, params).await
     }
 
     #[tool(description = "Create a real asset in Current Finances. data must include type ('real-estate', 'car', 'land', 'motorcycle', 'boat', 'jewelry', 'precious-metals', 'furniture', 'instrument', 'machinery', 'other') and name; typically value and purchasePrice.")]
-    async fn starting_assets_create(
+    async fn real_assets_create(
         &self,
-        Parameters(params): Parameters<StartingAssetsCreateParams>,
+        Parameters(params): Parameters<RealAssetsCreateParams>,
     ) -> Result<CallToolResult, McpError> {
-        starting_assets::create(&self.sync_manager, params).await
+        real_assets::create(&self.sync_manager, params).await
     }
 
-    #[tool(description = "Update a Current Finances real asset (partial). Changing value or purchasePrice records history.")]
-    async fn starting_assets_update(
+    #[tool(description = "Update a Current Finances real asset (partial). Changing value or purchasePrice records history. To remove one, use accounts_archive.")]
+    async fn real_assets_update(
         &self,
-        Parameters(params): Parameters<StartingAssetsUpdateParams>,
+        Parameters(params): Parameters<RealAssetsUpdateParams>,
     ) -> Result<CallToolResult, McpError> {
-        starting_assets::update(&self.sync_manager, params).await
-    }
-
-    #[tool(description = "Archive a Current Finances real asset (V5 cannot delete via the plugin API; reverse with accounts_unarchive)")]
-    async fn starting_assets_delete(
-        &self,
-        Parameters(params): Parameters<StartingAssetsDeleteParams>,
-    ) -> Result<CallToolResult, McpError> {
-        starting_assets::delete(&self.sync_manager, params).await
+        real_assets::update(&self.sync_manager, params).await
     }
 
     // ---- Current Finances: debts ----
@@ -305,20 +289,12 @@ impl ProjectionLabServer {
         debts::create(&self.sync_manager, params).await
     }
 
-    #[tool(description = "Update a Current Finances debt (partial). Use this to change balances, rates, payments, etc. Balance changes record history.")]
+    #[tool(description = "Update a Current Finances debt (partial). Use this to change balances, rates, payments, etc. Balance changes record history. To remove a paid-off debt, use accounts_archive.")]
     async fn debts_update(
         &self,
         Parameters(params): Parameters<DebtsUpdateParams>,
     ) -> Result<CallToolResult, McpError> {
         debts::update(&self.sync_manager, params).await
-    }
-
-    #[tool(description = "Archive a Current Finances debt, e.g. once paid off (V5 cannot delete via the plugin API; reverse with accounts_unarchive)")]
-    async fn debts_delete(
-        &self,
-        Parameters(params): Parameters<DebtsDeleteParams>,
-    ) -> Result<CallToolResult, McpError> {
-        debts::delete(&self.sync_manager, params).await
     }
 
     #[tool(description = "Get household information from Current Finances: people (you/partner, birth year/month), partner status, and location")]
@@ -583,12 +559,12 @@ impl ProjectionLabServer {
 
     // ---- History ----
 
-    #[tool(description = "Get net worth history over time from ProjectionLab (recorded automatically whenever account values change). Each point has netWorth, liquidNetWorth, and a breakdown (savings, taxable, taxDeferred, taxFree, crypto, assets, debt, loans). Optional start/end filters are unix ms timestamps.")]
-    async fn progress_get_history(
+    #[tool(description = "Get net worth history over time from ProjectionLab (recorded automatically whenever account values change). Each point has date, netWorth, liquidNetWorth, investableAssets, and a breakdown (savings, taxable, taxDeferred, taxFree, crypto, assets, debt, loans). Optional ISO start_date/end_date filters.")]
+    async fn net_worth_history(
         &self,
-        Parameters(params): Parameters<ProgressGetHistoryParams>,
+        Parameters(params): Parameters<NetWorthHistoryParams>,
     ) -> Result<CallToolResult, McpError> {
-        history::get_history(&self.sync_manager, params).await
+        history::net_worth_history(&self.sync_manager, params).await
     }
 
     #[tool(description = "Get per-account value history (balance, costBasis, or value by date) for one account or all accounts, optionally within an ISO date range")]
@@ -597,22 +573,6 @@ impl ProjectionLabServer {
         Parameters(params): Parameters<AccountHistoryParams>,
     ) -> Result<CallToolResult, McpError> {
         history::account_history(&self.sync_manager, params).await
-    }
-
-    #[tool(description = "Legacy: ProjectionLab V5 removed manual progress points; history is recorded automatically when balances change. Writes nothing; returns ProjectionLab's current net worth and latest history point (and the difference from any net_worth you pass).")]
-    async fn progress_add_data_point(
-        &self,
-        Parameters(params): Parameters<ProgressAddDataPointParams>,
-    ) -> Result<CallToolResult, McpError> {
-        history::snapshot(&self.sync_manager, params).await
-    }
-
-    #[tool(description = "Confirm the current net worth snapshot. ProjectionLab V5 records history automatically when balances change, so this writes nothing; it returns ProjectionLab's current net worth and latest history point, compared with any figures you pass (e.g. computed from Monarch Money).")]
-    async fn snapshot_net_worth(
-        &self,
-        Parameters(params): Parameters<ProgressAddDataPointParams>,
-    ) -> Result<CallToolResult, McpError> {
-        history::snapshot(&self.sync_manager, params).await
     }
 
     // ---- Browser / Simulation tools ----
@@ -758,12 +718,17 @@ Resources (read-only):\n\
 - projectionlab://net-worth/history - Net worth history\n\
 - projectionlab://plan/{id}/variables, projectionlab://plan/{id}/milestones\n\n\
 Tools by category:\n\
-Current Finances: accounts_list, accounts_get, accounts_create, accounts_update, accounts_update_balance, accounts_archive, accounts_unarchive, accounts_delete (archives), household_get\n\
-Real assets: starting_assets_list/get/create/update/delete; Debts: debts_list/get/create/update/delete\n\
+Current Finances: accounts_list, accounts_get, accounts_create, accounts_update, accounts_update_balance, accounts_archive, accounts_unarchive, household_get\n\
+Real assets: real_assets_list, real_assets_get, real_assets_create, real_assets_update\n\
+Debts: debts_list, debts_get, debts_create, debts_update\n\
 Plans: plans_list, plans_get, plans_create, plans_clone, plans_delete, plans_get_variables, plans_update_variables, plans_update_metadata, plans_get_milestones\n\
 Milestones: milestones_create, milestones_update, milestones_delete\n\
-Plan events: expenses_*, income_*, priorities_*, plan_assets_* (list/create/update/delete); plan_accounts_list, plan_accounts_update\n\
-History: progress_get_history (net worth), account_history, snapshot_net_worth\n\
+Expenses: expenses_list, expenses_create, expenses_update, expenses_delete\n\
+Income: income_list, income_create, income_update, income_delete\n\
+Priorities: priorities_list, priorities_create, priorities_update, priorities_delete\n\
+Planned assets: plan_assets_list, plan_assets_create, plan_assets_update, plan_assets_delete\n\
+Plan accounts: plan_accounts_list, plan_accounts_update\n\
+History: net_worth_history, account_history\n\
 Simulation: plans_get_simulation_results, plans_get_year_snapshot, plans_get_year_range, plans_get_montecarlo_results\n\
 Integration: sync_account_balances\n\
 Schema: schema_help (topic='topics' lists all)\n\
@@ -839,5 +804,63 @@ impl ServerHandler for ProjectionLabServer {
         });
 
         Ok(self.get_info())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    fn registered_tools() -> BTreeSet<String> {
+        ProjectionLabServer::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect()
+    }
+
+    /// snake_case identifiers (with at least one underscore) in `text`.
+    fn tool_like_names(text: &str) -> BTreeSet<String> {
+        text.split(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'))
+            .filter(|w| w.contains('_') && !w.starts_with('_') && !w.ends_with('_'))
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn instructions_list_exactly_the_registered_tools() {
+        let tools = registered_tools();
+        let section = INSTRUCTIONS
+            .split("Tools by category:")
+            .nth(1)
+            .expect("instructions have a tool section");
+        let listed = tool_like_names(section);
+        let missing: Vec<_> = tools.difference(&listed).collect();
+        let stale: Vec<_> = listed.difference(&tools).collect();
+        assert!(missing.is_empty(), "tools missing from INSTRUCTIONS: {:?}", missing);
+        assert!(stale.is_empty(), "INSTRUCTIONS mention unknown tools: {:?}", stale);
+    }
+
+    #[test]
+    fn readme_lists_exactly_the_registered_tools() {
+        let tools = registered_tools();
+        let readme = include_str!("../README.md");
+        let table = readme
+            .split("## Available Tools")
+            .nth(1)
+            .and_then(|s| s.split("\nNotes:").next())
+            .expect("README has an Available Tools table");
+        let listed: BTreeSet<String> = table
+            .split('`')
+            .skip(1)
+            .step_by(2)
+            .filter(|s| s.contains('_') && s.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+            .map(str::to_string)
+            .collect();
+        let missing: Vec<_> = tools.difference(&listed).collect();
+        let stale: Vec<_> = listed.difference(&tools).collect();
+        assert!(missing.is_empty(), "tools missing from README: {:?}", missing);
+        assert!(stale.is_empty(), "README mentions unknown tools: {:?}", stale);
     }
 }

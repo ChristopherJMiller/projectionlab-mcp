@@ -75,8 +75,8 @@ fn v5_changes() -> serde_json::Value {
         "description": "What changed in ProjectionLab V5 (late 2026) relative to older exports and older versions of these tools.",
         "export_format": "exportData now returns {schema: 1, exportedAt, documents: {currentFinances, plans, settings, accountHistory}} instead of {meta, today, plans, progress, settings}.",
         "current_finances": "savingsAccounts / investmentAccounts / debts / assets arrays were replaced by one `accounts` map keyed by id; each item has `kind` ('account' | 'debt' | 'real-asset'). Household members moved to household.people (map keyed by 'me' / 'spouse').",
-        "deleting": "Accounts cannot be deleted through the plugin API (restoreCurrentFinances merges accounts). They are archived instead via `archivedOn` (ISO date); archived items drop out of net worth but keep their history.",
-        "history": "The `progress` document and restoreProgress were removed. History is recorded automatically whenever a current value changes (updateAccountValues / updateAccount). Per-account history ships in documents.accountHistory; aggregated net worth is in the app's net-worth series (progress_get_history).",
+        "deleting": "Accounts cannot be deleted through the plugin API (restoreCurrentFinances merges accounts). They are archived instead via `archivedOn` (ISO date) — use accounts_archive / accounts_unarchive; archived items drop out of net worth but keep their history.",
+        "history": "The `progress` document and restoreProgress were removed. History is recorded automatically whenever a current value changes (updateAccountValues / updateAccount). Per-account history ships in documents.accountHistory; aggregated net worth is in the app's net-worth series (net_worth_history).",
         "plugin_api": "Plugin API version 2 adds getAccounts and updateAccountValues({accountId, values}). validateApiKey is now synchronous.",
         "plans": "Plans no longer have `active`, `initialized`, `simKey`, `hasNotes`, or `computedMilestones`. settings.plan.activeId is the plan selected in the UI and settings.plan.baselineId is the comparison baseline. Plan routes no longer include the plan id.",
         "events": "Every plan event now carries `kind` (expense, income, priority, real-asset, account). Legacy fields `title`, `key`, `planPath`, `frequencyChoices`, `color`, `subtitle`, `persistent` are gone from new events. Plan accounts use `liquidity` instead of `liquid`/`withdraw`. Real-asset events use value/purchasePrice/assessedValue instead of initialValue/amount/balance.",
@@ -168,7 +168,7 @@ fn real_asset() -> serde_json::Value {
             "purchasePrice": "original purchase price"
         },
         "example_create": {
-            "tool": "starting_assets_create",
+            "tool": "real_assets_create",
             "data": { "type": "car", "name": "Family car", "value": 22000, "purchasePrice": 35000 }
         }
     })
