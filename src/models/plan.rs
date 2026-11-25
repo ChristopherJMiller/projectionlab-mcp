@@ -61,6 +61,13 @@ impl Plan {
         self.starting_conditions_type.as_deref() == Some("custom")
     }
 
+    /// ProjectionLab only allows plans that project from today and start from
+    /// Current Finances to be the comparison baseline.
+    pub fn is_baseline_eligible(&self) -> bool {
+        self.variables.get("projectFrom").and_then(Value::as_str) == Some("now")
+            && self.starting_conditions_type.as_deref().unwrap_or("default") == "default"
+    }
+
     pub fn withdrawal_strategy_name(&self) -> Option<&str> {
         self.withdrawal_strategy.get("strategy").and_then(Value::as_str)
     }

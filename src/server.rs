@@ -5,8 +5,7 @@ use crate::tools::doc::{anyhow_err, err, ok_json, ok_text};
 use crate::tools::params::*;
 use crate::tools::plan_events::Section;
 use crate::tools::{
-    accounts, debts, history, plan_accounts, plan_events, plans, real_assets, schema_help,
-    simulation,
+    accounts, analysis, debts, history, plan_accounts, plan_events, plans, real_assets, schema_help,
 };
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -73,17 +72,6 @@ impl ProjectionLabServer {
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
-    }
-
-    /// Run a simulation extractor against a fresh projection of `plan_id`.
-    async fn run_plan_js(&self, plan_id: &str, extractor: &str) -> Result<CallToolResult, McpError> {
-        let script = simulation::for_plan(plan_id, extractor);
-        let result = self
-            .sync_manager
-            .run_js_async(&script)
-            .await
-            .map_err(|e| err(format!("Simulation extraction failed: {:#}", e)))?;
-        ok_json(&result)
     }
 
     // ---- Raw Plugin API tools ----
@@ -371,7 +359,7 @@ impl ProjectionLabServer {
         plans::update_metadata(&self.sync_manager, params).await
     }
 
-    #[tool(description = "Get a plan's milestones (retirement, life expectancy, FI, and custom goals). Projected completion dates come from plans_get_simulation_results.")]
+    #[tool(description = "Get a plan's milestones (retirement, life expectancy, FI, and custom goals). Projected completion ages come from plans_get_simulation_results (and probabilities from plans_run_monte_carlo).")]
     async fn plans_get_milestones(
         &self,
         Parameters(params): Parameters<PlanGetParams>,
@@ -614,47 +602,116 @@ impl ProjectionLabServer {
         ok_json(&result)
     }
 
-    #[tool(description = "Get projection results for a plan: outcome, year-by-year net worth/income/expenses/taxes/contributions/drawdown, milestone completion years, and notable events. Temporarily selects the plan in the app and restores the previous selection afterwards.")]
+    #[tool(description = "Get projection results for a plan: outcome, year-by-year net worth/income/expenses/taxes/contributions/drawdown, milestone completion ages, and notable events. Temporarily selects the plan in the app and restores the previous selection afterwards.")]
     async fn plans_get_simulation_results(
         &self,
         Parameters(params): Parameters<PlanGetParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.run_plan_js(&params.plan_id, simulation::SIMULATION_SUMMARY)
-            .await
+        analysis::simulation_results(&self.sync_manager, params).await
     }
 
-    #[tool(description = "Get Monte Carlo results held by the app (outcome stats, percentile plots, milestone probabilities). Note: ProjectionLab only runs Monte Carlo from its Chance of Success page, so results are usually unavailable in the automated browser.")]
-    async fn plans_get_montecarlo_results(
-        &self,
-        Parameters(_params): Parameters<PlanGetParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let result = self
-            .sync_manager
-            .run_js_async(simulation::MONTECARLO_RESULTS_JS)
-            .await
-            .map_err(anyhow_err)?;
-        ok_json(&result)
-    }
-
-    #[tool(description = "Get a detailed financial snapshot at a specific age from a plan's projection: every summary category (income, taxes, expenses, contributions, drawdown, debt payments, ...) plus ending balances.")]
+    #[tool(description = "Get a detailed financial snapshot at a specific age from a plan's projection: every summary category (income, taxes, expenses, contributions, drawdown, debt payments, net legacy, ...) with line items, plus ending balances.")]
     async fn plans_get_year_snapshot(
         &self,
         Parameters(params): Parameters<YearSnapshotParams>,
     ) -> Result<CallToolResult, McpError> {
-        let extractor = simulation::year_snapshot_extractor(params.age);
-        self.run_plan_js(&params.plan_id, &extractor).await
+        analysis::year_snapshot(&self.sync_manager, params).await
     }
 
-    #[tool(description = "Get year-by-year projection figures and net worth deltas for an age range, with summary statistics")]
-    async fn plans_get_year_range(
+    #[tool(description = "Reports: year-by-year table of chosen projection metrics (summary categories such as netWorth, income, expenses, taxes, contributions, drawdown, liquidNetWorth, savingsRate, netLegacy) over an optional age range, with totals and optional line items. An unknown metric name returns the available list.")]
+    async fn plans_get_report(
         &self,
-        Parameters(params): Parameters<YearRangeParams>,
+        Parameters(params): Parameters<ReportParams>,
     ) -> Result<CallToolResult, McpError> {
-        if params.start_age >= params.end_age {
-            return Err(err("start_age must be less than end_age"));
-        }
-        let extractor = simulation::year_range_extractor(params.start_age, params.end_age);
-        self.run_plan_js(&params.plan_id, &extractor).await
+        analysis::report(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Tax analytics for a plan's projection: per year gross/taxable/net income, total tax and its components, effective rate, AGI, IRMAA MAGI, Roth conversions, gain harvesting, and penalties; lifetime totals and peak tax year; plus the tax settings in effect. With detail_age, also the income/deduction line items and tax-bracket stacks for that year.")]
+    async fn plans_get_tax_analytics(
+        &self,
+        Parameters(params): Parameters<TaxAnalyticsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::tax_analytics(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Cash flow for one year of a plan's projection: inflows (income, withdrawals, asset sales) and outflows (expenses, taxes, contributions, debt payments) with line items, spending by essential/discretionary/flexible, and how contributions were funded. Defaults to the first projected year.")]
+    async fn plans_get_cash_flow(
+        &self,
+        Parameters(params): Parameters<PlanYearParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::cash_flow(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Estate view of a plan's projection: net legacy (what heirs receive after final taxes and costs) with its components by account, asset, and debt, the plan's estate settings, and net legacy over time. Defaults to the final projected year.")]
+    async fn plans_get_estate(
+        &self,
+        Parameters(params): Parameters<PlanYearParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::estate(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Roth conversions in a plan's projection: each year's converted amount with that year's taxes, taxable income, and IRMAA MAGI, lifetime total, and the Roth conversion and tax strategy settings driving them.")]
+    async fn plans_get_roth_conversions(
+        &self,
+        Parameters(params): Parameters<PlanGetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::roth_conversions(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Get a plan's tax optimization settings (Optimize pages): tax strategy target, Roth conversions, withdrawal shielding, gain harvesting, flexible spending, and drawdown order, plus what the app derives for this plan (tax mode, valid bracket rates, gain-harvesting-eligible and tax-deferred accounts, drawdown modules).")]
+    async fn plans_get_tax_strategy(
+        &self,
+        Parameters(params): Parameters<PlanGetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::tax_strategy(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Save tax optimization settings to a plan (partial updates per strategy): tax_strategy, roth_conversions, withdrawal_shielding, gain_harvesting, flexible_spending, drawdown_order. Returns what ProjectionLab stored. Try changes first with plans_what_if or plans_optimize_tax_strategy.")]
+    async fn plans_update_tax_strategy(
+        &self,
+        Parameters(params): Parameters<UpdateTaxStrategyParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::update_tax_strategy(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Optimize: compare a strategy module the way ProjectionLab's Optimize pages do — the saved plan vs. the strategy disabled (and enabled with defaults if currently off), plus each alternative bracket when the tax strategy fills a bracket. module: tax, roth, withdrawal_shielding, gain_harvesting. Returns headline metrics (final net worth, net legacy, lifetime taxes, Roth conversions, milestone ages) and differences. Nothing is saved.")]
+    async fn plans_optimize_tax_strategy(
+        &self,
+        Parameters(params): Parameters<OptimizeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::optimize(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "What-if analysis: apply changes to an unsaved copy of a plan and compare against the saved plan. Each scenario can set plan variables (assumptions, tax/Roth strategies, ...), withdrawal strategy fields, patch/add/remove events (expenses, income, priorities, assets, accounts), patch milestones (e.g. retirement criteria), and patch Current Finances accounts. Returns headline metrics and differences per scenario. Nothing is saved.")]
+    async fn plans_what_if(
+        &self,
+        Parameters(params): Parameters<WhatIfParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::what_if(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Compare saved plans side by side (default: against the baseline plan): outcome, retirement age, net worth at retirement, final net worth and net legacy, lifetime income/taxes/expenses, Roth conversions, milestone ages, and net worth by age, with differences from the first plan.")]
+    async fn plans_compare(
+        &self,
+        Parameters(params): Parameters<ComparePlansParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::compare_plans(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Set the plan ProjectionLab uses as the comparison baseline (saved in settings)")]
+    async fn plans_set_baseline(
+        &self,
+        Parameters(params): Parameters<PlanGetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::set_baseline(&self.sync_manager, params).await
+    }
+
+    #[tool(description = "Run a Monte Carlo simulation (Chance of Success) for a plan and return the success rate, outcome breakdown, milestone occurrence rates with ages by percentile, and percentile bands (net worth, withdrawal rate, expenses) by age. Optional settings override the plan's Monte Carlo settings for this run only (e.g. {\"trials\": 1000}). Nothing is saved.")]
+    async fn plans_run_monte_carlo(
+        &self,
+        Parameters(params): Parameters<MonteCarloParams>,
+    ) -> Result<CallToolResult, McpError> {
+        analysis::monte_carlo(&self.sync_manager, params).await
     }
 
     // ---- Integration tools ----
@@ -737,7 +794,9 @@ Priorities: priorities_list, priorities_create, priorities_update, priorities_de
 Planned assets: plan_assets_list, plan_assets_create, plan_assets_update, plan_assets_delete\n\
 Plan accounts: plan_accounts_list, plan_accounts_update\n\
 History: net_worth_history, account_history\n\
-Simulation: plans_get_simulation_results, plans_get_year_snapshot, plans_get_year_range, plans_get_montecarlo_results\n\
+Projections: plans_get_simulation_results, plans_get_year_snapshot, plans_get_report, plans_get_tax_analytics, plans_get_cash_flow, plans_get_estate, plans_get_roth_conversions\n\
+Optimize: plans_get_tax_strategy, plans_update_tax_strategy, plans_optimize_tax_strategy, plans_what_if\n\
+Compare & Monte Carlo: plans_compare, plans_set_baseline, plans_run_monte_carlo\n\
 Integration: sync_account_balances\n\
 Schema: schema_help (topic='topics' lists all)\n\
 System: compatibility_check, refresh_cache, cache_status, validate_api_key, run_js_in_browser\n\

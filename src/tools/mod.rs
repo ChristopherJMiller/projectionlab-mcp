@@ -1,6 +1,7 @@
 //! MCP tool handler implementations, grouped by domain.
 
 pub mod accounts;
+pub mod analysis;
 pub mod debts;
 pub mod doc;
 pub mod history;

@@ -33,7 +33,18 @@ pub const REQUIRED_PLUGIN_METHODS: &[&str] = &[
 
 /// Pinia store members the server reads or calls, by store id.
 pub const REQUIRED_STORE_MEMBERS: &[(&str, &[&str])] = &[
-    ("plan", &["plans", "planId", "selectPlan", "simulationRun"]),
+    ("plan", &[
+        "plans",
+        "planId",
+        "plan",
+        "selectPlan",
+        "simulationRun",
+        "exploration",
+        "startPlanExploration",
+        "endPlanExploration",
+        "baselinePlanId",
+        "setBaselinePlanId",
+    ]),
     ("worker", &["simulationState", "monteCarloState"]),
     ("monte-carlo", &["montecarlo"]),
     (
@@ -42,12 +53,12 @@ pub const REQUIRED_STORE_MEMBERS: &[(&str, &[&str])] = &[
     ),
     (
         "appDataSaving",
-        &["savePendingChanges", "hasUnsavedChanges", "saveError", "dirtyDocuments"],
+        &["savePendingChanges", "hasUnsavedChanges", "saveError", "dirtyDocuments", "flushDeferredSettingsChange"],
     ),
 ];
 
 /// App routes the server navigates to.
-pub const REQUIRED_ROUTES: &[&str] = &["/plan/overview", "/settings/plugins"];
+pub const REQUIRED_ROUTES: &[&str] = &["/plan/overview", "/settings/plugins", "/chance-of-success"];
 
 /// Fields of a simulated year the simulation tools read.
 pub const REQUIRED_SIMULATION_YEAR_FIELDS: &[&str] =
@@ -531,7 +542,7 @@ mod tests {
             envelope_schema: 1,
             plugin_api_version: 2,
             plugin_api_methods: REQUIRED_PLUGIN_METHODS.iter().map(|s| s.to_string()).collect(),
-            routes: vec!["/plan/overview".into(), "/settings/plugins".into()],
+            routes: REQUIRED_ROUTES.iter().map(|s| s.to_string()).collect(),
             export_shape: BTreeMap::new(),
         }
     }
@@ -545,7 +556,7 @@ mod tests {
             "appVersion": "5.0.0",
             "pluginApi": {"version": 2, "methods": REQUIRED_PLUGIN_METHODS},
             "stores": stores,
-            "routes": ["/plan/overview", "/settings/plugins"],
+            "routes": REQUIRED_ROUTES,
             "simulationYearFields": REQUIRED_SIMULATION_YEAR_FIELDS,
             "versionRegistry": {"5.0.0": {"hasBreakingChanges": true, "schemas": {"plan": 5}}}
         })
@@ -577,7 +588,7 @@ mod tests {
     #[test]
     fn new_routes_and_methods_are_features() {
         let mut s = surface();
-        s["routes"] = json!(["/plan/overview", "/settings/plugins", "/optimize/new-thing"]);
+        s["routes"].as_array_mut().unwrap().push(json!("/optimize/new-thing"));
         s["pluginApi"]["methods"].as_array_mut().unwrap().push(json!("getPlans"));
         let r = check(&baseline(), &s, None);
         assert_eq!(r.status, "drift");

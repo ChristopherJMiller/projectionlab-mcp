@@ -21,6 +21,7 @@ pub async fn list(sync: &SyncManager) -> ToolResult {
                 "icon": plan.icon,
                 "is_active": active == Some(plan.id.as_str()),
                 "is_baseline": baseline == Some(plan.id.as_str()),
+                "baseline_eligible": plan.is_baseline_eligible(),
                 "starting_conditions": plan.starting_conditions_type.as_deref().unwrap_or("default"),
                 "last_updated": plan.last_updated,
                 "milestones": plan.milestones.len(),

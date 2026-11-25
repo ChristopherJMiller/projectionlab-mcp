@@ -54,6 +54,8 @@ Workflow:
 
 ## Coverage
 
-Exposed: Plugin API v2 (all methods), Current Finances (accounts/debts/real assets, archive), household, plans, milestones, all plan event sections, plan accounts, account + net worth history, simulation results (summary, year snapshot/range), Monte Carlo results when present.
+Exposed: Plugin API v2 (all methods), Current Finances (accounts/debts/real assets, archive), household, plans, milestones, all plan event sections, plan accounts, account + net worth history, projections (summary, year snapshot, Reports), Tax Analytics, Cash Flow, Estate, Optimize (tax strategy settings, Roth conversions, strategy comparisons), what-if via plan exploration, plan comparison, baseline selection, and Monte Carlo (Chance of Success).
 
-Not yet exposed (app routes as of 5.0.0): `/optimize/*` (Roth conversions, drawdown, tax strategy, gain harvesting, flexible spending, comparison), `/tax-analytics`, `/cash-flow`, `/estate`, `/reports`, plan exploration / baseline selection, `/net-worth/history/import`. Monte Carlo can't be started programmatically yet (`requestMonteCarloRerun` alone doesn't run it).
+How the analysis tools work: `tools/simulation.rs` holds an in-app JS harness. It selects the plan via the plan store, waits for a settled `simulationRun`, and for what-if/optimize uses `startPlanExploration` (an unsaved copy the app simulates instead of the saved plan), always ending exploration and restoring the selection. Monte Carlo is started by pressing the Run button on `/chance-of-success`, because its runner is private to that page. Baseline must satisfy `projectFrom == "now"` and default starting conditions.
+
+Not yet exposed: `/net-worth/history/import`, Monte Carlo trial drill-down (`/chance-of-success/trial/:i`), the Optimize "comparison" page's template strategies, sharing/advisor features.

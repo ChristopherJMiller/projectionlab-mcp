@@ -23,8 +23,11 @@ const FLUSH_PENDING_SAVES_JS: &str = r#"
         const saving = pinia && pinia._s.get('appDataSaving');
         if (!saving) return { skipped: "appDataSaving store not found" };
         const started = Date.now();
-        // Edits mark documents dirty via watchers; let them run first.
+        // Edits mark documents dirty via watchers; let them run first. Settings
+        // saves are debounced (~30s), so push any pending settings change now.
         await sleep(100);
+        if (typeof saving.flushDeferredSettingsChange === 'function') saving.flushDeferredSettingsChange();
+        await sleep(50);
         while (saving.hasUnsavedChanges) {
             if (saving.saveError) throw new Error('ProjectionLab failed to save: ' + saving.saveError);
             await saving.savePendingChanges();
@@ -158,6 +161,11 @@ impl BrowserSession {
         let driver = WebDriver::new(GECKODRIVER_URL, caps)
             .await
             .context("Failed to connect to GeckoDriver")?;
+        // Scenario comparisons and Monte Carlo runs exceed WebDriver's 30s default.
+        driver
+            .set_script_timeout(Duration::from_secs(600))
+            .await
+            .context("Failed to set script timeout")?;
 
         Ok(driver)
     }

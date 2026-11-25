@@ -24,6 +24,8 @@ const TOPICS: &[&str] = &[
     "asset",
     "withdrawal_strategy",
     "milestone",
+    "tax_strategy",
+    "what_if",
 ];
 
 pub fn lookup(topic: &str) -> CallToolResult {
@@ -43,6 +45,8 @@ pub fn lookup(topic: &str) -> CallToolResult {
         "asset" | "plan_asset" => asset(),
         "withdrawal_strategy" => withdrawal_strategy(),
         "milestone" => milestone(),
+        "tax_strategy" | "optimize" => tax_strategy(),
+        "what_if" => what_if(),
         _ => {
             return CallToolResult::success(vec![Content::text(format!(
                 "Unknown topic: '{}'. Call schema_help with topic=\"topics\" to see all available topics.",
@@ -615,6 +619,75 @@ fn milestone() -> serde_json::Value {
             "color": "green",
             "criteria": [{ "type": "liquidNetWorth", "value": 2000000, "operator": ">=", "valueType": "today$" }]
         }
+    })
+}
+
+fn tax_strategy() -> serde_json::Value {
+    json!({
+        "description": "Tax optimization settings (ProjectionLab's Optimize pages), stored in plan.variables. Read with plans_get_tax_strategy, save with plans_update_tax_strategy, compare with plans_optimize_tax_strategy / plans_what_if.",
+        "prerequisite": "Strategies act on modeled income taxes. With variables.incomeTaxMode = 'fixed' (a flat effective rate) or estimateTaxes = false they have little or no effect. incomeTaxMode values: 'auto' (location-based brackets), 'custom' (your own brackets), 'fixed'.",
+        "taxStrategy": {
+            "role": "The shared target the module strategies fill up to each year",
+            "enabled": "boolean",
+            "type": "'bracket' (fill a federal bracket) | 'irmaa' (stay under an IRMAA tier) | 'income' (fill to an income amount) | 'federalPovertyLevel' (stay near a % of FPL, e.g. for ACA)",
+            "bracketRate": "for type 'bracket': the bracket rate to fill, e.g. 22 (must be one of the plan's bracket rates; see plans_get_tax_strategy app.bracketRateChoices)",
+            "capGainsBracketRate": "capital gains bracket to fill (shared with gain harvesting)",
+            "incomeThreshold / incomeThresholdType": "for type 'income': target amount and '$' (nominal) or 'today$'",
+            "niitCeiling / irmaaCeiling / acaCeiling": "booleans: also stay below these thresholds",
+            "start / end": "optional DateOrMilestone window"
+        },
+        "rothConversionStrategy": {
+            "role": "Convert pre-tax balances to Roth up to the tax strategy target",
+            "enabled": "boolean",
+            "start / end": "optional DateOrMilestone window",
+            "maxAnnualAmount": "optional annual cap",
+            "sourceAccountIds": "optional list of tax-deferred account ids to convert from (default: all eligible)"
+        },
+        "drawdownBlendingStrategy": {
+            "role": "'Withdrawal shielding': blend tax-deferred withdrawals into low-income years up to the target",
+            "enabled": "boolean",
+            "type": "blending mode",
+            "start / end": "optional DateOrMilestone window"
+        },
+        "gainHarvestingStrategy": {
+            "role": "Realize capital gains up to the capital gains bracket target to step up basis",
+            "enabled": "boolean",
+            "capGainsBracketRate": "bracket to fill (if not shared via taxStrategy)",
+            "maxAnnualGain": "optional annual cap",
+            "sourceAccountIds": "optional taxable account ids",
+            "start / end": "optional DateOrMilestone window"
+        },
+        "flexSpending": {
+            "role": "Flexible spending: cut discretionary spending when the plan is under pressure",
+            "enabled": "boolean",
+            "scope / interpolation / points": "which spending flexes and the multiplier curve"
+        },
+        "drawdownOrder": "array: the account withdrawal order",
+        "example_update": {
+            "tool": "plans_update_tax_strategy",
+            "tax_strategy": { "enabled": true, "type": "bracket", "bracketRate": 22 },
+            "roth_conversions": { "enabled": true, "maxAnnualAmount": 50000 }
+        }
+    })
+}
+
+fn what_if() -> serde_json::Value {
+    json!({
+        "description": "plans_what_if runs scenarios against an unsaved copy of a plan (ProjectionLab's plan exploration mode) and compares each with the saved plan. Nothing is saved.",
+        "scenario_fields": {
+            "name": "label (required)",
+            "variables": "plan variables to set (shallow), e.g. {\"inflation\": 3.5}, {\"investmentReturn\": 6}, strategies such as {\"rothConversionStrategy\": {...}}",
+            "withdrawal_strategy": "withdrawal strategy fields to set (shallow), e.g. {\"strategy\": \"guyton-klinger\"}",
+            "events": "[{section, id, patch}] to change, [{section, add: {...}}] to add, [{section, id, remove: true}] to remove; section = expenses | income | priorities | assets | accounts",
+            "milestones": "[{id, patch}], e.g. move retirement: {\"id\": \"retirement\", \"patch\": {\"criteria\": [{\"type\": \"age\", \"value\": 55}]}}",
+            "accounts": "[{id, patch}] Current Finances changes, e.g. {\"balance\": 150000}"
+        },
+        "returns": "baseline metrics and, per scenario, metrics plus vsBaseline differences: outcome, retirementAge, netWorthAtRetirement, finalNetWorth, finalNetLegacy, lifetimeIncome/Taxes/Expenses, averageEffectiveTaxRate, lifetimeRothConversions, lifetimeGainHarvesting, milestone ages, netWorthByAge",
+        "examples": [
+            { "name": "Retire at 55", "milestones": [{ "id": "retirement", "patch": { "criteria": [{ "type": "age", "value": 55 }] } }] },
+            { "name": "Bracket taxes + Roth conversions", "variables": { "incomeTaxMode": "auto", "estimateTaxes": true, "taxStrategy": { "enabled": true, "type": "bracket", "bracketRate": 22 }, "rothConversionStrategy": { "enabled": true } } },
+            { "name": "Cut travel", "events": [{ "section": "expenses", "id": "<expense id>", "patch": { "amount": 5000 } }] }
+        ]
     })
 }
 

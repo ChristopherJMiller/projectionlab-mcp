@@ -392,17 +392,6 @@ pub struct YearSnapshotParams {
     pub age: i64,
 }
 
-/// Parameters for getting year range deltas from simulation results
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct YearRangeParams {
-    /// The ID of the plan
-    pub plan_id: String,
-    /// Start age of the range
-    pub start_age: i64,
-    /// End age of the range
-    pub end_age: i64,
-}
-
 // ---- Integration tools ----
 
 /// A single account balance mapping for batch sync
@@ -428,4 +417,176 @@ pub struct SyncAccountBalancesParams {
 pub struct SchemaHelpParams {
     /// The entity type to get documentation for. Use "topics" to list all available topics.
     pub topic: String,
+}
+
+// ---- Analysis, strategy, and what-if tools ----
+
+/// Parameters for tax analytics
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct TaxAnalyticsParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// First age to include (default: plan start)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_age: Option<i64>,
+    /// Last age to include (default: end of plan)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_age: Option<i64>,
+    /// Also return a detailed breakdown for this age: income and taxable income line
+    /// items, deductions, taxes, filer variables, and the tax-bracket stacks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail_age: Option<i64>,
+}
+
+/// Parameters for a single-year view (cash flow, estate)
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct PlanYearParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// Age to report (default: first simulated year for cash flow, final year for estate)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub age: Option<i64>,
+}
+
+/// Parameters for a year-by-year report
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct ReportParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// Summary categories to include, e.g. ["netWorth", "income", "expenses", "taxes",
+    /// "contributions", "drawdown", "liquidNetWorth", "savingsRate", "netLegacy"].
+    /// Default: netWorth, income, expenses, taxes, contributions, drawdown.
+    /// An unknown name returns the list of available categories.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<Vec<String>>,
+    /// First age to include
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_age: Option<i64>,
+    /// Last age to include
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_age: Option<i64>,
+    /// Include each category's line items, not just totals (default false)
+    #[serde(default)]
+    pub line_items: bool,
+}
+
+/// A change to a plan event inside a what-if scenario
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct WhatIfEventChange {
+    /// Plan section: "expenses", "income", "priorities", "assets", or "accounts"
+    pub section: String,
+    /// Event to patch or remove
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Fields to set on the event (camelCase)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch: Option<JsonMap<String, JsonValue>>,
+    /// A new event to add (camelCase fields; id/kind filled in)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub add: Option<JsonMap<String, JsonValue>>,
+    /// Remove the event with `id`
+    #[serde(default)]
+    pub remove: bool,
+}
+
+/// A change to a milestone or Current Finances account inside a what-if scenario
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct WhatIfPatch {
+    /// Milestone or account id
+    pub id: String,
+    /// Fields to set (camelCase)
+    pub patch: JsonMap<String, JsonValue>,
+}
+
+/// One what-if scenario. All changes apply to an unsaved copy of the plan.
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct WhatIfScenario {
+    /// Short label for the scenario
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Plan variables to set (shallow, camelCase), e.g. {"inflation": 3.5},
+    /// {"rothConversionStrategy": {"enabled": true, "maxAnnualAmount": 50000}}
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variables: Option<JsonMap<String, JsonValue>>,
+    /// Withdrawal strategy fields to set (shallow, camelCase)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub withdrawal_strategy: Option<JsonMap<String, JsonValue>>,
+    /// Event changes (patch, add, or remove)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<WhatIfEventChange>>,
+    /// Milestone changes, e.g. retirement criteria
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestones: Option<Vec<WhatIfPatch>>,
+    /// Current Finances account changes, e.g. {"id": "...", "patch": {"balance": 50000}}
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accounts: Option<Vec<WhatIfPatch>>,
+}
+
+/// Parameters for what-if analysis
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct WhatIfParams {
+    /// The ID of the plan to start from
+    pub plan_id: String,
+    /// Scenarios to compare against the saved plan (each runs independently)
+    pub scenarios: Vec<WhatIfScenario>,
+}
+
+/// Parameters for strategy optimization comparisons
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct OptimizeParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// "tax" (overall tax strategy), "roth" (Roth conversions), "withdrawal_shielding"
+    /// (drawdown blending), or "gain_harvesting"
+    pub module: String,
+}
+
+/// Parameters for updating a plan's tax optimization settings (saved to the plan)
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct UpdateTaxStrategyParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// Fields for variables.taxStrategy, e.g. {"enabled": true, "type": "bracket", "bracketRate": 22}.
+    /// type: "bracket" | "irmaa" | "income" | "federalPovertyLevel"; optional start/end, capGainsBracketRate,
+    /// incomeThreshold/incomeThresholdType, niitCeiling/irmaaCeiling/acaCeiling
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tax_strategy: Option<JsonMap<String, JsonValue>>,
+    /// Fields for variables.rothConversionStrategy: enabled, start, end, maxAnnualAmount, sourceAccountIds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roth_conversions: Option<JsonMap<String, JsonValue>>,
+    /// Fields for variables.drawdownBlendingStrategy ("withdrawal shielding"): enabled, type, start, end
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub withdrawal_shielding: Option<JsonMap<String, JsonValue>>,
+    /// Fields for variables.gainHarvestingStrategy: enabled, start, end, maxAnnualGain,
+    /// capGainsBracketRate, sourceAccountIds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gain_harvesting: Option<JsonMap<String, JsonValue>>,
+    /// Fields for variables.flexSpending: enabled, scope, interpolation, points
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flexible_spending: Option<JsonMap<String, JsonValue>>,
+    /// Replacement for variables.drawdownOrder (account withdrawal order)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drawdown_order: Option<Vec<JsonValue>>,
+}
+
+/// Parameters for comparing saved plans
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct ComparePlansParams {
+    /// The first plan
+    pub plan_id: String,
+    /// Plans to compare with it (default: the baseline plan)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub other_plan_ids: Option<Vec<String>>,
+}
+
+/// Parameters for running Monte Carlo
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct MonteCarloParams {
+    /// The ID of the plan
+    pub plan_id: String,
+    /// Optional unsaved overrides for the plan's Monte Carlo settings (camelCase),
+    /// e.g. {"trials": 1000, "sampling": "historical"}
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<JsonMap<String, JsonValue>>,
 }

@@ -143,6 +143,21 @@ impl SyncManager {
 
     // ---- Writes (each invalidates the cache) ----
 
+    /// Run JavaScript that changes app state through the app's own stores, then
+    /// wait for ProjectionLab to persist the change.
+    pub async fn run_js_write(&self, script: &str) -> Result<Value> {
+        let result = {
+            let guard = self.lock_browser().await?;
+            let browser = guard.as_ref().context("Browser session not initialized")?;
+            match browser.execute_js_async(script).await {
+                Ok(value) => browser.flush_pending_saves().await.map(|_| value),
+                Err(e) => Err(e),
+            }
+        };
+        self.invalidate().await;
+        result
+    }
+
     /// Replace the Current Finances document.
     ///
     /// Note: ProjectionLab V5 *merges* submitted accounts over the stored ones,

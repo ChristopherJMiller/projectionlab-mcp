@@ -140,7 +140,9 @@ Call `schema_help` with `topic: "topics"` for field-level docs (`v5_changes` sum
 | Planned assets | `plan_assets_list`, `plan_assets_create`, `plan_assets_update`, `plan_assets_delete` |
 | Plan accounts | `plan_accounts_list`, `plan_accounts_update` (writes shared fields through to Current Finances) |
 | History | `net_worth_history`, `account_history` (ProjectionLab records history automatically when values change) |
-| Simulation | `plans_get_simulation_results`, `plans_get_year_snapshot`, `plans_get_year_range`, `plans_get_montecarlo_results` |
+| Projections | `plans_get_simulation_results`, `plans_get_year_snapshot`, `plans_get_report` (Reports), `plans_get_tax_analytics`, `plans_get_cash_flow`, `plans_get_estate`, `plans_get_roth_conversions` |
+| Optimize | `plans_get_tax_strategy`, `plans_update_tax_strategy`, `plans_optimize_tax_strategy` (strategy on/off and bracket comparisons), `plans_what_if` (any unsaved changes vs. the saved plan) |
+| Compare & Monte Carlo | `plans_compare`, `plans_set_baseline`, `plans_run_monte_carlo` |
 | Integration | `sync_account_balances` (batch balance updates, e.g. from Monarch Money) |
 | System | `compatibility_check`, `schema_help`, `refresh_cache`, `cache_status`, `validate_api_key`, `run_js_in_browser` |
 | Raw Plugin API | `get_accounts`, `update_account`, `update_account_values`, `export_data`, `restore_current_finances`, `restore_plans`, `restore_settings` |
@@ -149,8 +151,9 @@ Notes:
 
 - Balance changes go through `updateAccountValues`, so ProjectionLab records them in history. Items are removed by archiving (`accounts_archive`); the plugin API cannot delete them.
 - `restore_plans` replaces **all** plans; any plan missing from the array is deleted. Prefer the targeted tools.
-- Simulation tools temporarily select the requested plan in the app, wait for a fresh projection, and restore the previously selected plan.
-- Monte Carlo results only exist after ProjectionLab's Chance of Success page has run them in the automated browser, so they are usually unavailable.
+- Projection tools temporarily select the requested plan in the app, wait for a fresh projection, and restore the previously selected plan.
+- What-if, optimize, and Monte Carlo overrides use ProjectionLab's plan exploration mode: changes apply to an unsaved copy of the plan, so nothing is saved unless you use an update tool.
+- `plans_run_monte_carlo` presses Run on the Chance of Success page (its runner is private to that page).
 
 ## Development
 
