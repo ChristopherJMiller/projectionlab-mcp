@@ -5,57 +5,68 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 
 // ---- Raw Plugin API tools ----
 
-/// Parameters for updating an account via the raw Plugin API
+/// Parameters for `updateAccount` via the raw Plugin API
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct UpdateAccountParams {
-    /// The ID of the account to update
+    /// The ID of the Current Finances account to update
     pub account_id: String,
-    /// The new data for the account as a JSON object
+    /// Fields to assign on the account (camelCase ProjectionLab field names)
     pub data: JsonMap<String, JsonValue>,
-    /// Allow assignment of new properties to account objects
+    /// Allow assigning fields that don't already exist on the account
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force: Option<bool>,
+}
+
+/// Parameters for `updateAccountValues` via the raw Plugin API
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct UpdateAccountValuesParams {
+    /// The ID of the Current Finances account to update
+    pub account_id: String,
+    /// Values to set. Supported: `balance` (accounts, debts), `costBasis` (taxable-style
+    /// accounts), `value` and `purchasePrice` (real assets). Must be finite numbers.
+    pub values: JsonMap<String, JsonValue>,
 }
 
 /// Parameters for restoring Current Finances
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct RestoreCurrentFinancesParams {
-    /// The new Current Finances state as a JSON object
+    /// The Current Finances document (`{ accounts: {<id>: {...}}, household, location, ... }`).
+    /// Submitted accounts are merged over existing ones; omitted accounts are kept.
     pub new_state: JsonMap<String, JsonValue>,
 }
 
 /// Parameters for restoring Plans
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct RestorePlansParams {
-    /// The new plans data as a JSON object
-    pub new_plans: JsonMap<String, JsonValue>,
-}
-
-/// Parameters for restoring Progress
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct RestoreProgressParams {
-    /// The new progress data as a JSON object
-    pub new_progress: JsonMap<String, JsonValue>,
+    /// The complete array of plans. Any existing plan not in this array is DELETED.
+    pub new_plans: Vec<JsonValue>,
 }
 
 /// Parameters for restoring Settings
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct RestoreSettingsParams {
-    /// The new settings data as a JSON object
+    /// The new settings document as a JSON object
     pub new_settings: JsonMap<String, JsonValue>,
 }
 
-// ---- Account tools ----
+// ---- Current Finances account tools ----
 
-/// Parameters for listing accounts
+/// Parameters for listing Current Finances accounts
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct AccountsListParams {
-    /// Filter by account type (savings, investment, debt)
+    /// Filter by kind: "account", "debt", or "real-asset"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// Filter by type (e.g. "savings", "taxable", "401k", "mortgage", "real-estate").
+    /// Also accepts the groupings "investment" (non-savings accounts) and "debt".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_type: Option<String>,
-    /// Filter by owner
+    /// Filter by owner ("me", "spouse", "joint")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// Include archived accounts (default false)
+    #[serde(default)]
+    pub include_archived: bool,
 }
 
 /// Parameters for getting account details
@@ -65,12 +76,18 @@ pub struct AccountsGetParams {
     pub account_id: String,
 }
 
-/// Parameters for creating a new account
+/// Parameters for creating a Current Finances account, debt, or real asset
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct AccountsCreateParams {
-    /// The type of account to create (savings, investment, debt)
+    /// The ProjectionLab type, e.g. "savings", "taxable", "401k", "roth-ira", "hsa",
+    /// "mortgage", "auto-loan", "student-loans", "real-estate", "car".
+    /// (Legacy values "investment" and "debt" are accepted if `data.type` is set.)
     pub account_type: String,
-    /// The account data as a JSON object
+    /// Optional kind ("account", "debt", "real-asset"); inferred from the type if omitted
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// Account fields (camelCase), e.g. {"name": "Brokerage", "owner": "me", "balance": 1000}.
+    /// Real assets use "value" (and optionally "purchasePrice") instead of "balance".
     pub data: JsonMap<String, JsonValue>,
 }
 
@@ -79,24 +96,101 @@ pub struct AccountsCreateParams {
 pub struct AccountsUpdateParams {
     /// The ID of the account to update
     pub account_id: String,
-    /// The updated account data as a JSON object (partial updates supported)
+    /// Fields to update (camelCase, partial). Value fields (balance, costBasis, value,
+    /// purchasePrice) are applied via updateAccountValues so history is recorded.
     pub data: JsonMap<String, JsonValue>,
 }
 
-/// Parameters for updating account balance
+/// Parameters for updating an account's balance
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct AccountsUpdateBalanceParams {
     /// The ID of the account to update
     pub account_id: String,
-    /// The new balance value
+    /// The new balance (or value, for real assets)
     pub balance: f64,
 }
 
-/// Parameters for deleting an account
+/// Parameters for archiving (formerly deleting) an account
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct AccountsDeleteParams {
-    /// The ID of the account to delete
+    /// The ID of the account to archive
     pub account_id: String,
+}
+
+/// Parameters for archiving an account
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct AccountsArchiveParams {
+    /// The ID of the account to archive
+    pub account_id: String,
+    /// Archive date (ISO YYYY-MM-DD). Defaults to today.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+}
+
+/// Parameters for unarchiving an account
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct AccountsUnarchiveParams {
+    /// The ID of the archived account to restore
+    pub account_id: String,
+}
+
+// ---- History tools ----
+
+/// Parameters for reading per-account value history
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct AccountHistoryParams {
+    /// Restrict to one account. If omitted, returns history for all accounts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    /// Inclusive start date (ISO YYYY-MM-DD)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date: Option<String>,
+    /// Inclusive end date (ISO YYYY-MM-DD)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date: Option<String>,
+    /// Include archived accounts when no account_id is given (default false)
+    #[serde(default)]
+    pub include_archived: bool,
+}
+
+/// Parameters accepted by the legacy progress_add_data_point / snapshot_net_worth tools.
+/// ProjectionLab V5 records history automatically, so these values are only echoed
+/// back for comparison against ProjectionLab's own net worth.
+#[derive(Debug, Default, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct ProgressAddDataPointParams {
+    /// Unix timestamp in milliseconds (ignored)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<i64>,
+    /// Your computed net worth, compared against ProjectionLab's
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub net_worth: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub savings: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taxable: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_deferred: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_free: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assets: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debt: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loans: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crypto: Option<f64>,
+}
+
+/// Parameters for getting net worth history
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct ProgressGetHistoryParams {
+    /// Optional start date filter (unix timestamp in milliseconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date: Option<i64>,
+    /// Optional end date filter (unix timestamp in milliseconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date: Option<i64>,
 }
 
 // ---- Plan tools ----
@@ -152,6 +246,15 @@ pub struct PlansDeleteParams {
     pub confirm: bool,
 }
 
+/// Parameters for updating plan metadata (name, icon)
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct PlansUpdateMetadataParams {
+    /// The ID of the plan to update
+    pub plan_id: String,
+    /// The metadata fields to update. Allowed keys: name, icon.
+    pub updates: JsonMap<String, JsonValue>,
+}
+
 // ---- Milestone tools ----
 
 /// Parameters for creating a milestone in a plan
@@ -183,18 +286,7 @@ pub struct MilestoneDeleteParams {
     pub milestone_id: String,
 }
 
-// ---- Plan metadata tools ----
-
-/// Parameters for updating plan metadata (name, icon, active status)
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct PlansUpdateMetadataParams {
-    /// The ID of the plan to update
-    pub plan_id: String,
-    /// The metadata fields to update. Allowed keys: name, icon, active.
-    pub updates: JsonMap<String, JsonValue>,
-}
-
-// ---- Event tools (expenses, income, priorities) ----
+// ---- Plan event tools (expenses, income, priorities, assets, plan accounts) ----
 
 /// Parameters for listing events in a plan
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
@@ -208,7 +300,8 @@ pub struct PlanEventsListParams {
 pub struct PlanEventCreateParams {
     /// The ID of the plan to add the event to
     pub plan_id: String,
-    /// The event data as a JSON object. Must include required fields for the event type.
+    /// The event data (camelCase). `id` and `kind` are filled in if omitted.
+    /// Tip: copy an existing event of the same type as a template.
     pub data: JsonMap<String, JsonValue>,
 }
 
@@ -232,60 +325,67 @@ pub struct PlanEventDeleteParams {
     pub event_id: String,
 }
 
-// ---- Starting Asset tools (Current Finances) ----
+// ---- Real asset tools (Current Finances, kind "real-asset") ----
 
-/// Parameters for listing starting assets
+/// Parameters for listing real assets
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct StartingAssetsListParams {
-    /// Filter by asset type (e.g., "car", "real-estate", "other")
+    /// Filter by asset type (e.g., "real-estate", "car", "other")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub asset_type: Option<String>,
     /// Filter by owner
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// Include archived assets (default false)
+    #[serde(default)]
+    pub include_archived: bool,
 }
 
-/// Parameters for getting a starting asset by ID
+/// Parameters for getting a real asset by ID
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct StartingAssetsGetParams {
-    /// The ID of the starting asset to retrieve
+    /// The ID of the asset to retrieve
     pub asset_id: String,
 }
 
-/// Parameters for creating a new starting asset
+/// Parameters for creating a real asset
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct StartingAssetsCreateParams {
-    /// The asset data as a JSON object. Must include: name, title, type, icon, color, owner, balance.
+    /// Asset fields (camelCase). Must include `type` (e.g. "real-estate", "car") and `name`;
+    /// typically `value` and `purchasePrice`.
     pub data: JsonMap<String, JsonValue>,
 }
 
-/// Parameters for updating a starting asset
+/// Parameters for updating a real asset
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct StartingAssetsUpdateParams {
-    /// The ID of the starting asset to update
+    /// The ID of the asset to update
     pub asset_id: String,
     /// The updated fields as a JSON object (partial updates supported)
     pub data: JsonMap<String, JsonValue>,
 }
 
-/// Parameters for deleting a starting asset
+/// Parameters for archiving a real asset
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct StartingAssetsDeleteParams {
-    /// The ID of the starting asset to delete
+    /// The ID of the asset to archive
     pub asset_id: String,
 }
 
-// ---- Debt tools (Current Finances) ----
+// ---- Debt tools (Current Finances, kind "debt") ----
 
 /// Parameters for listing debts
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct DebtsListParams {
-    /// Filter by debt type (e.g., "mortgage", "auto-loan", "student-loan", "credit-card")
+    /// Filter by debt type (e.g., "mortgage", "auto-loan", "student-loans", "credit-card")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debt_type: Option<String>,
     /// Filter by owner
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// Include archived debts (default false)
+    #[serde(default)]
+    pub include_archived: bool,
 }
 
 /// Parameters for getting a debt by ID
@@ -298,7 +398,8 @@ pub struct DebtsGetParams {
 /// Parameters for creating a new debt
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct DebtsCreateParams {
-    /// The debt data as a JSON object. Must include: name, title, type, icon, color, owner, balance.
+    /// Debt fields (camelCase). Must include `type` (e.g. "mortgage", "student-loans") and
+    /// `name`; typically `balance`, `interestRate`, `monthlyPayment`, `owner`.
     pub data: JsonMap<String, JsonValue>,
 }
 
@@ -311,57 +412,11 @@ pub struct DebtsUpdateParams {
     pub data: JsonMap<String, JsonValue>,
 }
 
-/// Parameters for deleting a debt
+/// Parameters for archiving a debt
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct DebtsDeleteParams {
-    /// The ID of the debt to delete
+    /// The ID of the debt to archive
     pub debt_id: String,
-}
-
-// ---- Progress tools ----
-
-/// Parameters for adding a progress data point
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct ProgressAddDataPointParams {
-    /// Unix timestamp in milliseconds for the data point
-    pub date: i64,
-    /// Total net worth
-    pub net_worth: f64,
-    /// Total savings account balances
-    #[serde(default)]
-    pub savings: f64,
-    /// Total taxable account balances
-    #[serde(default)]
-    pub taxable: f64,
-    /// Total tax-deferred account balances (401k, traditional IRA)
-    #[serde(default)]
-    pub tax_deferred: f64,
-    /// Total tax-free account balances (Roth IRA, Roth 401k)
-    #[serde(default)]
-    pub tax_free: f64,
-    /// Total asset values
-    #[serde(default)]
-    pub assets: f64,
-    /// Total debt balances
-    #[serde(default)]
-    pub debt: f64,
-    /// Total loan balances
-    #[serde(default)]
-    pub loans: f64,
-    /// Total crypto balances
-    #[serde(default)]
-    pub crypto: f64,
-}
-
-/// Parameters for getting progress history
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct ProgressGetHistoryParams {
-    /// Optional start date filter (unix timestamp in milliseconds)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_date: Option<i64>,
-    /// Optional end date filter (unix timestamp in milliseconds)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_date: Option<i64>,
 }
 
 // ---- Browser / Simulation tools ----
@@ -374,7 +429,7 @@ pub struct RunJsInBrowserParams {
     /// If true, treat script as async (last argument is a callback). Default: false.
     #[serde(default)]
     pub r#async: bool,
-    /// Optional: navigate to this path first (e.g., "/plan/abc123")
+    /// Optional: navigate to this path first (e.g., "/plan/overview", "/net-worth/history")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub navigate_to: Option<String>,
 }
@@ -406,7 +461,7 @@ pub struct YearRangeParams {
 pub struct BalanceMapping {
     /// The ProjectionLab account ID
     pub pl_account_id: String,
-    /// The new balance value
+    /// The new balance (or value, for real assets)
     pub balance: f64,
 }
 
@@ -423,7 +478,5 @@ pub struct SyncAccountBalancesParams {
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct SchemaHelpParams {
     /// The entity type to get documentation for. Use "topics" to list all available topics.
-    /// Available: topics, date_or_milestone, yearly_change, expense, income, priority,
-    /// account, plan_account, asset, starting_asset, debt, withdrawal_strategy, milestone
     pub topic: String,
 }

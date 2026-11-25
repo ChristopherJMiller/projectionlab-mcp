@@ -5,13 +5,13 @@
 //!   cargo run --bin call-tool exportData           # same as above
 //!   cargo run --bin call-tool plans                # list plans (parsed)
 //!   cargo run --bin call-tool accounts             # list accounts (parsed)
-//!   cargo run --bin call-tool raw <method> [args]  # raw plugin API call
+//!   cargo run --bin call-tool raw <method> [args]  # raw plugin API call (args: JSON array)
 //!
 //! Reuses the persistent Firefox profile so login is automatic after first use.
 
 use anyhow::Result;
 use projectionlab_mcp::browser::BrowserSession;
-use projectionlab_mcp::models::FullExport;
+use projectionlab_mcp::models::parse_export;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,68 +30,62 @@ async fn main() -> Result<()> {
     let mut browser = BrowserSession::new().await?;
     eprintln!("Connected!\n");
 
+    let result = run(&browser, command, &args).await;
+    browser.shutdown().await;
+    result
+}
+
+async fn run(browser: &BrowserSession, command: &str, args: &[String]) -> Result<()> {
     match command {
         "exportData" | "export" => {
             let raw = browser.call_plugin_api("exportData", vec![]).await?;
-            match serde_json::from_value::<FullExport>(raw.clone()) {
+            match parse_export(&raw) {
                 Ok(data) => {
                     eprintln!("Parse: OK");
-                    eprintln!("Plans: {}", data.plans.len());
-                    eprintln!("Savings accounts: {}", data.today.savings_accounts.len());
-                    eprintln!("Investment accounts: {}", data.today.investment_accounts.len());
-                    eprintln!("Debts: {}", data.today.debts.len());
-                    eprintln!("Assets: {}", data.today.assets.len());
-                    eprintln!("Progress points: {}", data.progress.data.len());
-                    eprintln!();
-                    println!("{}", serde_json::to_string_pretty(&raw)?);
+                    eprintln!("Plans: {}", data.plans().len());
+                    eprintln!("Current Finances items: {}", data.current_finances().accounts.len());
+                    eprintln!("Accounts with history: {}", data.documents.account_history.len());
                 }
-                Err(e) => {
-                    eprintln!("Parse FAILED: {}", e);
-                    println!("{}", serde_json::to_string_pretty(&raw)?);
-                }
+                Err(e) => eprintln!("Parse FAILED: {:#}", e),
             }
+            println!("{}", serde_json::to_string_pretty(&raw)?);
         }
         "plans" => {
-            let raw = browser.call_plugin_api("exportData", vec![]).await?;
-            let data: FullExport = serde_json::from_value(raw)?;
-            for plan in &data.plans {
+            let data = parse_export(&browser.call_plugin_api("exportData", vec![]).await?)?;
+            for plan in data.plans() {
                 println!(
-                    "{} | {} | active={} | expenses={} income={} priorities={} milestones={}",
+                    "{} | {} | active={} baseline={} | expenses={} income={} priorities={} assets={} milestones={}",
                     plan.id,
                     plan.name,
-                    plan.active,
+                    data.active_plan_id() == Some(plan.id.as_str()),
+                    data.baseline_plan_id() == Some(plan.id.as_str()),
                     plan.expenses.events.len(),
                     plan.income.events.len(),
                     plan.priorities.events.len(),
+                    plan.assets.events.len(),
                     plan.milestones.len(),
                 );
             }
         }
         "accounts" => {
-            let raw = browser.call_plugin_api("exportData", vec![]).await?;
-            let data: FullExport = serde_json::from_value(raw)?;
-            for a in &data.today.savings_accounts {
-                println!("{} | {} | savings | balance={}", a.id, a.name, a.balance);
-            }
-            for a in &data.today.investment_accounts {
+            let data = parse_export(&browser.call_plugin_api("exportData", vec![]).await?)?;
+            for a in data.current_finances().sorted_accounts() {
                 println!(
-                    "{} | {} | {} | balance={}",
-                    a.id, a.name, a.account_type, a.balance
-                );
-            }
-            for d in &data.today.debts {
-                println!(
-                    "{} | {} | {} | balance={}",
-                    d.id, d.name, d.debt_type, d.balance
+                    "{} | {} | {}/{} | value={} {}",
+                    a.id,
+                    a.name,
+                    a.kind,
+                    a.account_type,
+                    a.current_value(),
+                    a.archived_on.as_deref().map(|d| format!("(archived {})", d)).unwrap_or_default()
                 );
             }
         }
         "raw" => {
             let method = args.get(1).expect("Usage: call-tool raw <method> [json_args]");
-            let api_args: Vec<serde_json::Value> = if let Some(json_str) = args.get(2) {
-                serde_json::from_str(json_str)?
-            } else {
-                vec![]
+            let api_args: Vec<serde_json::Value> = match args.get(2) {
+                Some(json_str) => serde_json::from_str(json_str)?,
+                None => vec![],
             };
             let result = browser.call_plugin_api(method, api_args).await?;
             println!("{}", serde_json::to_string_pretty(&result)?);
@@ -107,7 +101,5 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
     }
-
-    browser.shutdown().await;
     Ok(())
 }

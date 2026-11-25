@@ -1,42 +1,42 @@
-/// Settings and Progress types for ProjectionLab
+//! User settings document.
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
-    pub schema: f64,
-    pub last_updated: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub theme: Option<String>,
-    pub plugins: PluginSettings,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_updated: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<PluginSettings>,
+    /// Which plan is selected in the UI and which is the comparison baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PlanSelection>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginSettings {
+    #[serde(default)]
     pub enabled: bool,
-    pub api_key: String,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct Progress {
-    pub data: Vec<ProgressDataPoint>,
-    pub last_updated: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ProgressDataPoint {
-    pub date: i64,
-    pub net_worth: f64,
-    pub savings: f64,
-    pub taxable: f64,
-    pub tax_deferred: f64,
-    pub tax_free: f64,
-    pub assets: f64,
-    pub debt: f64,
-    pub loans: f64,
-    pub crypto: f64,
+pub struct PlanSelection {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_id: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }

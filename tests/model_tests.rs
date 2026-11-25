@@ -1,593 +1,262 @@
-use projectionlab_mcp::models::*;
-use serde_json::json;
+//! Model tests for the ProjectionLab V5 export format.
+//!
+//! Inline fixtures keep these runnable anywhere. Tests marked "local" also run
+//! against `debug-data/full_export.json` (gitignored, produced by
+//! `cargo run --bin export-data`) when it exists, and skip otherwise.
 
-/// Helper: load the real example.json fixture
-fn load_fixture() -> FullExport {
-    let json = std::fs::read_to_string("example.json").expect("Failed to read example.json");
-    serde_json::from_str(&json).expect("Failed to parse example.json")
-}
+use projectionlab_mcp::models::account_history::flatten_history;
+use projectionlab_mcp::models::{parse_export, FullExport};
+use serde_json::{json, Value};
 
-/// Dev aid: parse the real (gitignored) export at debug-data/full_export.json,
-/// reporting the exact field path on failure. Skips when the file is absent
-/// (e.g. in CI), so it only bites when a real export can't be modeled.
-#[test]
-fn parse_local_debug_export() {
-    let path = "debug-data/full_export.json";
-    let Ok(json) = std::fs::read_to_string(path) else {
-        eprintln!("skipping: {path} not present");
-        return;
-    };
-    let de = &mut serde_json::Deserializer::from_str(&json);
-    let result: Result<FullExport, _> = serde_path_to_error::deserialize(de);
-    if let Err(e) = result {
-        panic!("Failed to parse {path} at `{}`: {e}", e.path());
-    }
-}
-
-// ---- Roundtrip tests: deserialize → serialize → deserialize produces identical data ----
-
-#[test]
-fn full_export_roundtrip() {
-    let data = load_fixture();
-    let serialized = serde_json::to_string(&data).expect("Failed to serialize");
-    let reparsed: FullExport = serde_json::from_str(&serialized).expect("Failed to reparse");
-
-    assert_eq!(data.meta.version, reparsed.meta.version);
-    assert_eq!(data.plans.len(), reparsed.plans.len());
-    assert_eq!(
-        data.today.savings_accounts.len(),
-        reparsed.today.savings_accounts.len()
-    );
-    assert_eq!(
-        data.today.investment_accounts.len(),
-        reparsed.today.investment_accounts.len()
-    );
-    assert_eq!(data.today.debts.len(), reparsed.today.debts.len());
-    assert_eq!(data.today.assets.len(), reparsed.today.assets.len());
-    assert_eq!(data.progress.data.len(), reparsed.progress.data.len());
-}
-
-#[test]
-fn plan_roundtrip() {
-    let data = load_fixture();
-    for plan in &data.plans {
-        let serialized = serde_json::to_string(plan).expect("Failed to serialize plan");
-        let reparsed: Plan = serde_json::from_str(&serialized).expect("Failed to reparse plan");
-        assert_eq!(plan.id, reparsed.id);
-        assert_eq!(plan.name, reparsed.name);
-        assert_eq!(plan.expenses.events.len(), reparsed.expenses.events.len());
-        assert_eq!(plan.income.events.len(), reparsed.income.events.len());
-        assert_eq!(
-            plan.priorities.events.len(),
-            reparsed.priorities.events.len()
-        );
-        assert_eq!(plan.milestones.len(), reparsed.milestones.len());
-    }
-}
-
-#[test]
-fn variables_roundtrip() {
-    let data = load_fixture();
-    for plan in &data.plans {
-        let serialized =
-            serde_json::to_string(&plan.variables).expect("Failed to serialize variables");
-        let reparsed: Variables =
-            serde_json::from_str(&serialized).expect("Failed to reparse variables");
-        assert_eq!(plan.variables.start_year, reparsed.start_year);
-        assert_eq!(plan.variables.investment_return, reparsed.investment_return);
-        assert_eq!(plan.variables.inflation, reparsed.inflation);
-    }
-}
-
-#[test]
-fn starting_account_roundtrip() {
-    let data = load_fixture();
-    for account in &data.today.savings_accounts {
-        let serialized =
-            serde_json::to_string(account).expect("Failed to serialize savings account");
-        let reparsed: StartingAccount =
-            serde_json::from_str(&serialized).expect("Failed to reparse savings account");
-        assert_eq!(account.id, reparsed.id);
-        assert_eq!(account.balance, reparsed.balance);
-    }
-    for account in &data.today.investment_accounts {
-        let serialized =
-            serde_json::to_string(account).expect("Failed to serialize investment account");
-        let reparsed: StartingAccount =
-            serde_json::from_str(&serialized).expect("Failed to reparse investment account");
-        assert_eq!(account.id, reparsed.id);
-        assert_eq!(account.balance, reparsed.balance);
-    }
-}
-
-#[test]
-fn starting_account_tolerates_missing_is_passive_income() {
-    // ProjectionLab omits isPassiveIncome on some accounts (e.g. created before
-    // the field existed). Previously this failed with: missing field
-    // `isPassiveIncome`. Strip it from a real fixture account and reparse.
-    let data = load_fixture();
-    let account = data
-        .today
-        .investment_accounts
-        .first()
-        .expect("fixture should have an investment account");
-    let mut value = serde_json::to_value(account).expect("serialize account");
-    value
-        .as_object_mut()
-        .expect("account is an object")
-        .remove("isPassiveIncome");
-
-    let reparsed: StartingAccount =
-        serde_json::from_value(value).expect("account without isPassiveIncome should parse");
-    assert_eq!(reparsed.id, account.id);
-    assert!(!reparsed.is_passive_income, "should default to false");
-}
-
-#[test]
-fn assumptions_mode_accepts_none() {
-    // ProjectionLab added a "none" growth/return option. Previously the export
-    // failed to parse with: unknown variant `none`, expected `fixed` or `plan`.
-    for variant in ["fixed", "plan", "none"] {
-        let mode: projectionlab_mcp::models::common::AssumptionsMode =
-            serde_json::from_value(json!(variant))
-            .unwrap_or_else(|e| panic!("Failed to parse AssumptionsMode {variant:?}: {e}"));
-        assert_eq!(
-            serde_json::to_value(&mode).unwrap(),
-            json!(variant),
-            "AssumptionsMode {variant:?} should roundtrip"
-        );
-    }
-}
-
-#[test]
-fn expense_event_roundtrip() {
-    let data = load_fixture();
-    for plan in &data.plans {
-        for expense in &plan.expenses.events {
-            let serialized =
-                serde_json::to_string(expense).expect("Failed to serialize expense");
-            let reparsed: ExpenseEvent =
-                serde_json::from_str(&serialized).expect("Failed to reparse expense");
-            assert_eq!(expense.id, reparsed.id);
-            assert_eq!(expense.amount, reparsed.amount);
-        }
-    }
-}
-
-#[test]
-fn income_event_roundtrip() {
-    let data = load_fixture();
-    for plan in &data.plans {
-        for income in &plan.income.events {
-            let serialized = serde_json::to_string(income).expect("Failed to serialize income");
-            let reparsed: IncomeEvent =
-                serde_json::from_str(&serialized).expect("Failed to reparse income");
-            assert_eq!(income.id, reparsed.id);
-            assert_eq!(income.amount, reparsed.amount);
-        }
-    }
-}
-
-#[test]
-fn progress_roundtrip() {
-    let data = load_fixture();
-    let serialized = serde_json::to_string(&data.progress).expect("Failed to serialize progress");
-    let reparsed: Progress =
-        serde_json::from_str(&serialized).expect("Failed to reparse progress");
-    assert_eq!(data.progress.data.len(), reparsed.data.len());
-    if let (Some(first), Some(reparsed_first)) = (data.progress.data.first(), reparsed.data.first())
-    {
-        assert_eq!(first.net_worth, reparsed_first.net_worth);
-        assert_eq!(first.date, reparsed_first.date);
-    }
-}
-
-// ---- DebtAccount type tests ----
-
-#[test]
-fn debt_account_deserialize_minimal() {
-    let json = json!({
-        "id": "debt_1",
-        "name": "Mortgage",
-        "title": "Home Mortgage",
-        "type": "mortgage",
-        "icon": "home",
-        "color": "#ff0000",
-        "owner": "me",
-        "balance": 250000.0
-    });
-
-    let debt: DebtAccount = serde_json::from_value(json).expect("Failed to parse minimal debt");
-    assert_eq!(debt.id, "debt_1");
-    assert_eq!(debt.balance, 250000.0);
-    assert_eq!(debt.debt_type, "mortgage");
-    assert!(debt.interest_rate.is_none());
-    assert!(debt.extra.is_empty());
-}
-
-#[test]
-fn debt_account_captures_unknown_fields() {
-    let json = json!({
-        "id": "debt_2",
-        "name": "Car Loan",
-        "title": "Car Loan",
-        "type": "auto-loan",
-        "icon": "car",
-        "color": "#0000ff",
-        "owner": "me",
-        "balance": 15000.0,
-        "someFutureField": "surprise",
-        "anotherNewField": 42
-    });
-
-    let debt: DebtAccount = serde_json::from_value(json).expect("Failed to parse debt with extras");
-    assert_eq!(debt.id, "debt_2");
-    assert_eq!(debt.extra.len(), 2);
-    assert_eq!(debt.extra.get("someFutureField").unwrap(), "surprise");
-}
-
-#[test]
-fn debt_account_roundtrip_preserves_extras() {
-    let json = json!({
-        "id": "debt_3",
-        "name": "Student Loan",
-        "title": "Student Loan",
-        "type": "student-loan",
-        "icon": "school",
-        "color": "#00ff00",
-        "owner": "me",
-        "balance": 30000.0,
-        "interestRate": 0.045,
-        "unknownField": {"nested": true}
-    });
-
-    let debt: DebtAccount = serde_json::from_value(json.clone()).expect("Failed to parse");
-    let reserialized = serde_json::to_value(&debt).expect("Failed to serialize");
-
-    // The unknown field should survive roundtrip
-    assert_eq!(
-        reserialized.get("unknownField"),
-        json.get("unknownField")
-    );
-}
-
-// ---- StartingAsset type tests ----
-
-#[test]
-fn starting_asset_deserialize_minimal() {
-    let json = json!({
-        "id": "asset_1",
-        "name": "House",
-        "title": "Primary Residence",
-        "type": "real-estate",
-        "icon": "home",
-        "color": "#00ff00",
-        "owner": "joint",
-        "balance": 500000.0
-    });
-
-    let asset: StartingAsset =
-        serde_json::from_value(json).expect("Failed to parse minimal asset");
-    assert_eq!(asset.id, "asset_1");
-    assert_eq!(asset.balance, 500000.0);
-    assert!(asset.extra.is_empty());
-}
-
-#[test]
-fn starting_asset_captures_unknown_fields() {
-    let json = json!({
-        "id": "asset_2",
-        "name": "Tesla",
-        "title": "Car",
-        "type": "car",
-        "icon": "car",
-        "color": "#333333",
-        "owner": "me",
-        "balance": 45000.0,
-        "depreciationRate": 0.15,
-        "customField": [1, 2, 3]
-    });
-
-    let asset: StartingAsset =
-        serde_json::from_value(json).expect("Failed to parse asset with extras");
-    assert_eq!(asset.extra.len(), 2);
-}
-
-// ---- Fixture data integrity tests ----
-
-#[test]
-fn fixture_has_expected_structure() {
-    let data = load_fixture();
-
-    // Meta
-    assert!(!data.meta.version.is_empty());
-    assert!(data.meta.last_updated > 0);
-
-    // At least one plan
-    assert!(!data.plans.is_empty());
-
-    // Plans have expected sub-structures
-    let plan = &data.plans[0];
-    assert!(!plan.id.is_empty());
-    assert!(!plan.name.is_empty());
-
-    // Variables have reasonable values
-    assert!(plan.variables.investment_return >= 0.0);
-    assert!(plan.variables.inflation >= 0.0);
-
-    // Settings
-    assert!(data.settings.plugins.enabled);
-    assert!(!data.settings.plugins.api_key.is_empty());
-}
-
-#[test]
-fn fixture_accounts_have_valid_ids() {
-    let data = load_fixture();
-
-    let mut ids: Vec<&str> = Vec::new();
-    for a in &data.today.savings_accounts {
-        assert!(!a.id.is_empty(), "Savings account has empty ID");
-        ids.push(&a.id);
-    }
-    for a in &data.today.investment_accounts {
-        assert!(!a.id.is_empty(), "Investment account has empty ID");
-        ids.push(&a.id);
-    }
-
-    // All IDs should be unique
-    let unique: std::collections::HashSet<&&str> = ids.iter().collect();
-    assert_eq!(ids.len(), unique.len(), "Account IDs are not unique");
-}
-
-// ---- Field coverage tests: detect missing fields in our structs ----
-
-/// Compare raw JSON keys vs our typed struct's serialized keys.
-/// Returns a list of (path, missing_keys) for any object where keys are lost.
-fn find_missing_keys(
-    raw: &serde_json::Value,
-    typed: &serde_json::Value,
-    path: &str,
-) -> Vec<(String, Vec<String>)> {
-    let mut issues = Vec::new();
-
-    match (raw, typed) {
-        (serde_json::Value::Object(raw_obj), serde_json::Value::Object(typed_obj)) => {
-            let missing: Vec<String> = raw_obj
-                .keys()
-                .filter(|k| !typed_obj.contains_key(*k))
-                .cloned()
-                .collect();
-
-            if !missing.is_empty() {
-                issues.push((path.to_string(), missing));
-            }
-
-            // Recurse into shared keys
-            for (key, raw_val) in raw_obj {
-                if let Some(typed_val) = typed_obj.get(key) {
-                    let child_path = if path.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{}.{}", path, key)
-                    };
-                    issues.extend(find_missing_keys(raw_val, typed_val, &child_path));
+fn fixture() -> Value {
+    json!({
+        "schema": 1,
+        "exportedAt": 1795638406435i64,
+        "documents": {
+            "currentFinances": {
+                "schema": 5,
+                "lastUpdated": 1795637259733i64,
+                "location": {"country": "US", "state": "WA"},
+                "household": {
+                    "partnerStatus": "married",
+                    "people": {
+                        "me": {"id": "me", "name": "Alex", "birthYear": 1990, "birthMonth": 6, "character": {"hair": "short"}},
+                        "spouse": {"id": "spouse", "name": "Sam", "birthYear": 1991, "birthMonth": 2}
+                    }
+                },
+                "accounts": {
+                    "acc_1": {"id": "acc_1", "kind": "account", "type": "savings", "name": "Checking", "owner": "me", "balance": 10000, "order": 0, "icon": "mdi-bank"},
+                    "acc_2": {"id": "acc_2", "kind": "account", "type": "taxable", "name": "Brokerage", "owner": "joint", "balance": 50000, "costBasis": 30000, "order": 1},
+                    "acc_3": {"id": "acc_3", "kind": "account", "type": "crypto", "name": "Old wallet", "balance": 999, "order": 2, "archivedOn": "2026-01-01"},
+                    "home": {"id": "home", "kind": "real-asset", "type": "real-estate", "name": "House", "value": 400000, "purchasePrice": 350000, "order": 0},
+                    "mtg": {"id": "mtg", "kind": "debt", "type": "mortgage", "name": "Mortgage", "balance": 300000, "interestRate": 6.5, "monthlyPayment": 2200, "securedByAssetId": "home", "order": 0, "futureField": {"x": 1}}
                 }
+            },
+            "plans": [
+                {
+                    "id": "plan_a",
+                    "name": "Base",
+                    "icon": "mdi-home",
+                    "schema": 5,
+                    "startingConditionsType": "default",
+                    "startingConditions": {},
+                    "expenses": {"events": [
+                        {"id": "e1", "kind": "expense", "type": "living-expenses", "name": "Living", "amount": 4000, "amountType": "today$", "frequency": "monthly", "owner": "joint",
+                         "start": {"type": "keyword", "value": "beforeCurrentYear"}, "end": {"type": "milestone", "value": "lifeExpectancy"}, "spendingType": "essential", "yearlyChange": {"type": "match-inflation"}}
+                    ]},
+                    "income": {"events": []},
+                    "priorities": {"events": []},
+                    "assets": {"events": []},
+                    "accounts": {"events": [
+                        {"id": "pa1", "kind": "account", "type": "savings", "name": "Checking", "accountId": "acc_1", "balance": 10000, "liquidity": true}
+                    ]},
+                    "milestones": [
+                        {"id": "retirement", "name": "Retirement", "criteria": [{"type": "age", "value": 60}]},
+                        {"id": "ms_1", "name": "Custom", "removable": true, "criteria": [{"type": "year", "value": 2035}]}
+                    ],
+                    "variables": {"inflation": 3, "investmentReturn": 7, "bondSettings": {"type": "none"}},
+                    "withdrawalStrategy": {"enabled": true, "strategy": "initial-%"},
+                    "montecarlo": {"trials": 1000},
+                    "meta": {"index": 0}
+                },
+                {
+                    "id": "plan_b",
+                    "name": "Custom start",
+                    "startingConditionsType": "custom",
+                    "startingConditions": {"accounts": {"acc_1": {"id": "acc_1", "kind": "account", "type": "savings", "name": "Checking", "balance": 12000}}}
+                }
+            ],
+            "settings": {"schema": 5, "plan": {"activeId": "plan_b", "baselineId": "plan_a"}, "plugins": {"enabled": true, "apiKey": "secret"}, "theme": "dark"},
+            "accountHistory": {
+                "acc_2": {
+                    "2025": {"kind": "account", "schema": 5, "balance": {"2025-06-01": 40000, "2025-12-01": 45000}, "costBasis": {"2025-06-01": 28000}},
+                    "2026": {"kind": "account", "schema": 5, "balance": {"2026-03-01": 50000}}
+                },
+                "home": {"2026": {"kind": "real-asset", "schema": 5, "value": {"2026-01-01": 400000}}}
             }
         }
-        (serde_json::Value::Array(raw_arr), serde_json::Value::Array(typed_arr)) => {
-            // Compare first element of each array (if both non-empty)
-            if let (Some(raw_first), Some(typed_first)) = (raw_arr.first(), typed_arr.first()) {
-                let child_path = format!("{}[0]", path);
-                issues.extend(find_missing_keys(raw_first, typed_first, &child_path));
+    })
+}
+
+fn parsed() -> FullExport {
+    parse_export(&fixture()).expect("fixture parses")
+}
+
+#[test]
+fn parses_v5_envelope() {
+    let data = parsed();
+    assert_eq!(data.schema, 1);
+    assert_eq!(data.plans().len(), 2);
+    assert_eq!(data.current_finances().accounts.len(), 5);
+    assert_eq!(data.active_plan_id(), Some("plan_b"));
+    assert_eq!(data.baseline_plan_id(), Some("plan_a"));
+    let household = data.current_finances().household.as_ref().unwrap();
+    assert_eq!(household.people.len(), 2);
+    assert_eq!(household.people["me"].birth_year, Some(1990));
+}
+
+#[test]
+fn net_worth_excludes_archived_and_subtracts_debt() {
+    let cf = parsed().documents.current_finances;
+    // 10000 + 50000 + 400000 − 300000 (archived crypto excluded)
+    assert_eq!(cf.net_worth(), 160000.0);
+    assert_eq!(cf.active_accounts().len(), 4);
+    assert!(cf.find("acc_3").unwrap().is_archived());
+}
+
+#[test]
+fn accounts_sort_like_projectionlab() {
+    let cf = parsed().documents.current_finances;
+    let order: Vec<&str> = cf.sorted_accounts().iter().map(|a| a.id.as_str()).collect();
+    // savings, investments, real assets, debts
+    assert_eq!(order, ["acc_1", "acc_2", "acc_3", "home", "mtg"]);
+}
+
+#[test]
+fn value_field_and_buckets() {
+    let cf = parsed().documents.current_finances;
+    assert_eq!(cf.find("home").unwrap().value_field(), "value");
+    assert_eq!(cf.find("mtg").unwrap().value_field(), "balance");
+    assert_eq!(cf.find("acc_1").unwrap().bucket(), "cash");
+    assert_eq!(cf.find("acc_2").unwrap().bucket(), "taxable");
+    assert_eq!(cf.find("home").unwrap().bucket(), "realAssets");
+    assert_eq!(cf.find("mtg").unwrap().bucket(), "debt");
+}
+
+#[test]
+fn unknown_fields_are_preserved() {
+    let cf = parsed().documents.current_finances;
+    let mtg = cf.find("mtg").unwrap();
+    assert_eq!(mtg.extra.get("futureField"), Some(&json!({"x": 1})));
+    assert_eq!(mtg.extra.get("interestRate"), Some(&json!(6.5)));
+    let reserialized = serde_json::to_value(mtg).unwrap();
+    assert_eq!(reserialized["futureField"], json!({"x": 1}));
+}
+
+#[test]
+fn default_plan_has_empty_starting_conditions() {
+    let data = parsed();
+    let a = data.find_plan("plan_a").unwrap();
+    assert!(!a.uses_custom_starting_conditions());
+    assert!(a.starting_conditions.accounts.is_empty());
+    let b = data.find_plan("plan_b").unwrap();
+    assert!(b.uses_custom_starting_conditions());
+    assert_eq!(b.starting_conditions.find("acc_1").unwrap().balance, Some(12000.0));
+}
+
+#[test]
+fn minimal_plan_parses() {
+    // plan_b has no event containers, milestones, or variables at all.
+    let data = parsed();
+    let b = data.find_plan("plan_b").unwrap();
+    assert!(b.expenses.events.is_empty());
+    assert!(b.milestones.is_empty());
+    assert!(b.variables.is_null());
+}
+
+#[test]
+fn plan_event_summary_projects_fields() {
+    let data = parsed();
+    let e = &data.find_plan("plan_a").unwrap().expenses.events[0];
+    assert_eq!(e.kind.as_deref(), Some("expense"));
+    let s = e.summary(&["amount", "frequency", "missing"]);
+    assert_eq!(s, json!({"id": "e1", "name": "Living", "type": "living-expenses", "amount": 4000, "frequency": "monthly"}));
+}
+
+#[test]
+fn account_history_flattens_across_years() {
+    let data = parsed();
+    let h = &data.documents.account_history["acc_2"];
+    let points = flatten_history(h, None, None);
+    let dates: Vec<&str> = points.iter().map(|p| p.date.as_str()).collect();
+    assert_eq!(dates, ["2025-06-01", "2025-12-01", "2026-03-01"]);
+    assert_eq!(points[0].cost_basis, Some(28000.0));
+    assert_eq!(points[2].balance, Some(50000.0));
+
+    let filtered = flatten_history(h, Some("2025-07-01"), Some("2026-12-31"));
+    assert_eq!(filtered.len(), 2);
+
+    let home = flatten_history(&data.documents.account_history["home"], None, None);
+    assert_eq!(home[0].value, Some(400000.0));
+}
+
+#[test]
+fn legacy_export_reports_path() {
+    let legacy = json!({"meta": {"version": "4.5.0"}, "today": {}, "plans": [], "settings": {}, "progress": {}});
+    let e = parse_export(&legacy).unwrap_err().to_string();
+    assert!(e.contains("schema"), "error should name the missing field: {}", e);
+    assert!(e.contains("top-level keys"), "error should list top-level keys: {}", e);
+}
+
+#[test]
+fn bad_field_error_names_json_path() {
+    let mut v = fixture();
+    v["documents"]["plans"][0]["expenses"]["events"][0]["id"] = json!(42);
+    let e = parse_export(&v).unwrap_err().to_string();
+    assert!(e.contains("documents.plans[0].expenses.events[0].id"), "{}", e);
+}
+
+// ---- Local export (skipped when absent) ----
+
+fn local_export() -> Option<Value> {
+    let text = std::fs::read_to_string("debug-data/full_export.json").ok()?;
+    let v: Value = serde_json::from_str(&text).ok()?;
+    if v.get("documents").is_none() {
+        eprintln!("debug-data/full_export.json is not a V5 export; skipping");
+        return None;
+    }
+    Some(v)
+}
+
+#[test]
+fn local_export_parses() {
+    let Some(raw) = local_export() else { return };
+    let data = parse_export(&raw).unwrap_or_else(|e| panic!("{:#}", e));
+    assert!(!data.plans().is_empty());
+}
+
+/// Check that every value in `a` (the raw export) survives in `b` (the typed
+/// model re-serialized). Numbers compare by value (5 == 5.0) and a raw `null`
+/// may be absent. Keys the typed model adds as empty defaults are ignored.
+fn semantically_equal(a: &Value, b: &Value, path: &str, diffs: &mut Vec<String>) {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            if x.as_f64() != y.as_f64() {
+                diffs.push(format!("{}: {} != {}", path, x, y));
             }
         }
-        _ => {}
-    }
-
-    issues
-}
-
-#[test]
-fn detect_missing_fields_in_full_export() {
-    let raw_json = std::fs::read_to_string("example.json").expect("Failed to read example.json");
-    let raw: serde_json::Value =
-        serde_json::from_str(&raw_json).expect("Failed to parse raw JSON");
-    let typed: FullExport =
-        serde_json::from_str(&raw_json).expect("Failed to parse as FullExport");
-    let typed_value = serde_json::to_value(&typed).expect("Failed to serialize typed");
-
-    let issues = find_missing_keys(&raw, &typed_value, "");
-
-    if !issues.is_empty() {
-        let mut report = String::from("MISSING FIELDS DETECTED:\n");
-        for (path, keys) in &issues {
-            report.push_str(&format!("  at '{}': {:?}\n", path, keys));
-        }
-        // Print but don't fail — these are fields we may intentionally skip
-        // or that are handled by #[serde(flatten)]
-        println!("{}", report);
-    }
-
-    // This test documents field coverage. If you want it to be strict:
-    // assert!(issues.is_empty(), "{}", report);
-}
-
-#[test]
-fn detect_missing_fields_in_plan() {
-    let raw_json = std::fs::read_to_string("example.json").expect("Failed to read example.json");
-    let raw: serde_json::Value =
-        serde_json::from_str(&raw_json).expect("Failed to parse raw JSON");
-    let typed: FullExport =
-        serde_json::from_str(&raw_json).expect("Failed to parse as FullExport");
-
-    // Compare first plan
-    if let (Some(raw_plan), Some(typed_plan)) = (
-        raw.get("plans").and_then(|p| p.as_array()).and_then(|a| a.first()),
-        typed.plans.first(),
-    ) {
-        let typed_plan_value =
-            serde_json::to_value(typed_plan).expect("Failed to serialize plan");
-        let issues = find_missing_keys(raw_plan, &typed_plan_value, "plans[0]");
-
-        if !issues.is_empty() {
-            let mut report = String::from("MISSING PLAN FIELDS:\n");
-            for (path, keys) in &issues {
-                report.push_str(&format!("  at '{}': {:?}\n", path, keys));
+        (Value::Object(x), Value::Object(y)) => {
+            for (k, va) in x {
+                let vb = y.get(k).unwrap_or(&Value::Null);
+                semantically_equal(va, vb, &format!("{}.{}", path, k), diffs);
             }
-            println!("{}", report);
         }
-    }
-}
-
-#[test]
-fn detect_missing_fields_in_starting_conditions() {
-    let raw_json = std::fs::read_to_string("example.json").expect("Failed to read example.json");
-    let raw: serde_json::Value =
-        serde_json::from_str(&raw_json).expect("Failed to parse raw JSON");
-    let typed: FullExport =
-        serde_json::from_str(&raw_json).expect("Failed to parse as FullExport");
-
-    if let Some(raw_today) = raw.get("today") {
-        let typed_today =
-            serde_json::to_value(&typed.today).expect("Failed to serialize today");
-        let issues = find_missing_keys(raw_today, &typed_today, "today");
-
-        if !issues.is_empty() {
-            let mut report = String::from("MISSING STARTING CONDITIONS FIELDS:\n");
-            for (path, keys) in &issues {
-                report.push_str(&format!("  at '{}': {:?}\n", path, keys));
+        (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
+            for (i, (va, vb)) in x.iter().zip(y).enumerate() {
+                semantically_equal(va, vb, &format!("{}[{}]", path, i), diffs);
             }
-            println!("{}", report);
         }
-    }
-}
-
-// ---- Operations logic tests (pure data manipulation) ----
-
-#[test]
-fn clone_plan_produces_independent_copy() {
-    let mut data = load_fixture();
-    let original_count = data.plans.len();
-
-    let source = data.plans[0].clone();
-    let mut cloned = source.clone();
-    cloned.id = "cloned_plan_123".to_string();
-    cloned.name = "Cloned Plan".to_string();
-    data.plans.push(cloned);
-
-    assert_eq!(data.plans.len(), original_count + 1);
-    assert_eq!(data.plans.last().unwrap().id, "cloned_plan_123");
-    assert_eq!(data.plans.last().unwrap().name, "Cloned Plan");
-
-    // Original unchanged
-    assert_eq!(data.plans[0].id, source.id);
-    assert_eq!(data.plans[0].name, source.name);
-}
-
-#[test]
-fn update_variables_partial_merge() {
-    let mut data = load_fixture();
-    let original_inflation = data.plans[0].variables.inflation;
-
-    // Simulate partial variable update via JSON merge
-    let mut vars_json =
-        serde_json::to_value(&data.plans[0].variables).expect("Failed to serialize vars");
-    vars_json
-        .as_object_mut()
-        .unwrap()
-        .insert("inflation".to_string(), json!(0.04));
-
-    let updated: Variables = serde_json::from_value(vars_json).expect("Failed to reparse vars");
-
-    assert_eq!(updated.inflation, 0.04);
-    // Other fields should be preserved
-    assert_eq!(
-        updated.investment_return,
-        data.plans[0].variables.investment_return
-    );
-    assert_ne!(updated.inflation, original_inflation);
-}
-
-#[test]
-fn add_and_remove_expense_from_plan() {
-    let mut data = load_fixture();
-    let original_count = data.plans[0].expenses.events.len();
-
-    // Create a minimal expense JSON and parse it
-    let expense_json = json!({
-        "id": "test_expense",
-        "name": "Test Expense",
-        "type": "living-expenses",
-        "title": "Living Expenses",
-        "icon": "shopping_cart",
-        "key": 999.0,
-        "amount": 1200.0,
-        "amountType": "today$",
-        "owner": "me",
-        "start": {"type": "keyword", "value": "beforeCurrentYear"},
-        "end": {"type": "keyword", "value": "endOfPlan"},
-        "frequency": "monthly",
-        "frequencyChoices": false,
-        "yearlyChange": {
-            "type": "match-inflation",
-            "amount": 0.0,
-            "limit": 0.0,
-            "limitEnabled": false,
-            "limitType": "today$"
-        },
-        "planPath": "expenses.events",
-        "spendingType": "essential"
-    });
-
-    let expense: ExpenseEvent =
-        serde_json::from_value(expense_json).expect("Failed to parse test expense");
-    data.plans[0].expenses.events.push(expense);
-
-    assert_eq!(data.plans[0].expenses.events.len(), original_count + 1);
-
-    // Remove it
-    let idx = data.plans[0]
-        .expenses
-        .events
-        .iter()
-        .position(|e| e.id == "test_expense")
-        .unwrap();
-    data.plans[0].expenses.events.remove(idx);
-
-    assert_eq!(data.plans[0].expenses.events.len(), original_count);
-}
-
-#[test]
-fn batch_balance_update() {
-    let mut data = load_fixture();
-
-    // Get first savings account ID and set a new balance
-    if let Some(account) = data.today.savings_accounts.first_mut() {
-        let old_balance = account.balance;
-        account.balance = 99999.99;
-        assert_ne!(account.balance, old_balance);
-        assert_eq!(account.balance, 99999.99);
+        _ if a == b => {}
+        _ => diffs.push(format!("{}: {} != {}", path, a, b)),
     }
 }
 
 #[test]
-fn add_progress_data_point() {
-    let mut data = load_fixture();
-    let original_count = data.progress.data.len();
+fn local_export_typed_roundtrip_loses_nothing() {
+    let Some(raw) = local_export() else { return };
+    let data = parse_export(&raw).unwrap();
+    let back = serde_json::to_value(&data).unwrap();
+    let mut diffs = Vec::new();
+    semantically_equal(&raw, &back, "$", &mut diffs);
+    diffs.dedup();
+    assert!(diffs.is_empty(), "typed round trip changed {} values, e.g.:\n{}", diffs.len(), diffs.iter().take(10).cloned().collect::<Vec<_>>().join("\n"));
+}
 
-    data.progress.data.push(ProgressDataPoint {
-        date: 1712188800000,
-        net_worth: 500000.0,
-        savings: 50000.0,
-        taxable: 200000.0,
-        tax_deferred: 150000.0,
-        tax_free: 50000.0,
-        assets: 50000.0,
-        debt: 0.0,
-        loans: 0.0,
-        crypto: 0.0,
-    });
-
-    assert_eq!(data.progress.data.len(), original_count + 1);
-    assert_eq!(data.progress.data.last().unwrap().net_worth, 500000.0);
+#[test]
+fn inline_fixture_typed_roundtrip_loses_nothing() {
+    let raw = fixture();
+    let back = serde_json::to_value(parsed()).unwrap();
+    let mut diffs = Vec::new();
+    semantically_equal(&raw, &back, "$", &mut diffs);
+    assert!(diffs.is_empty(), "{:?}", diffs);
 }

@@ -1,12 +1,5 @@
-mod browser;
-mod models;
-mod resources;
-mod server;
-mod sync;
-mod tools;
-
+use projectionlab_mcp::server::ProjectionLabServer;
 use rmcp::ServiceExt;
-use server::ProjectionLabServer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]

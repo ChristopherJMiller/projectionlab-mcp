@@ -1,6 +1,7 @@
 use crate::browser::BrowserSession;
-use crate::models::FullExport;
+use crate::models::{parse_export, FullExport};
 use anyhow::{Context, Result};
+use serde_json::{json, Map, Value};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -12,91 +13,97 @@ const CACHE_TTL_SECS: u64 = 30;
 /// How long to wait for the browser session to initialize before giving up
 const BROWSER_READY_TIMEOUT_SECS: u64 = 60;
 
-/// Manages synchronization and caching of ProjectionLab data
+type SharedBrowser = Arc<tokio::sync::Mutex<Option<BrowserSession>>>;
+
+/// Manages synchronization and caching of ProjectionLab data.
+///
+/// Reads go through a short-lived cache of the `exportData` result, kept both
+/// as raw JSON (the source of truth for writes, so round trips are lossless)
+/// and as a parsed `FullExport` (for convenient typed reads).
 pub struct SyncManager {
-    browser: Arc<tokio::sync::Mutex<Option<BrowserSession>>>,
+    browser: SharedBrowser,
     cached_data: Arc<RwLock<Option<CachedData>>>,
 }
 
 struct CachedData {
-    data: FullExport,
+    raw: Arc<Value>,
+    data: Arc<FullExport>,
     cached_at: Instant,
 }
 
 impl SyncManager {
-    pub fn new(browser: Arc<tokio::sync::Mutex<Option<BrowserSession>>>) -> Self {
+    pub fn new(browser: SharedBrowser) -> Self {
         Self {
             browser,
             cached_data: Arc::new(RwLock::new(None)),
         }
     }
 
-    /// Get the current data, fetching from ProjectionLab if cache is stale
-    pub async fn get_data(&self) -> Result<FullExport> {
-        // Check if cache is valid
+    /// Parsed export data, fetched from ProjectionLab if the cache is stale.
+    pub async fn get_data(&self) -> Result<Arc<FullExport>> {
+        Ok(self.get_cached().await?.1)
+    }
+
+    /// Raw export JSON (an owned copy, safe to mutate and write back).
+    pub async fn get_raw(&self) -> Result<Value> {
+        Ok((*self.get_cached().await?.0).clone())
+    }
+
+    async fn get_cached(&self) -> Result<(Arc<Value>, Arc<FullExport>)> {
         {
             let cache = self.cached_data.read().await;
             if let Some(cached) = cache.as_ref() {
                 if cached.cached_at.elapsed() < Duration::from_secs(CACHE_TTL_SECS) {
                     debug!("Returning cached data (age: {:?})", cached.cached_at.elapsed());
-                    return Ok(cached.data.clone());
-                } else {
-                    debug!("Cache is stale (age: {:?}), will refresh", cached.cached_at.elapsed());
+                    return Ok((cached.raw.clone(), cached.data.clone()));
                 }
+                debug!("Cache is stale (age: {:?}), will refresh", cached.cached_at.elapsed());
             }
         }
-
-        // Cache miss or stale, fetch new data
         info!("Fetching data from ProjectionLab...");
-        let data = self.fetch_data().await?;
-
-        // Update cache
-        {
-            let mut cache = self.cached_data.write().await;
-            *cache = Some(CachedData {
-                data: data.clone(),
-                cached_at: Instant::now(),
-            });
-        }
-
-        Ok(data)
+        self.fetch_and_store().await
     }
 
     /// Force a refresh of the cached data
-    pub async fn refresh(&self) -> Result<FullExport> {
+    pub async fn refresh(&self) -> Result<Arc<FullExport>> {
         info!("Force refreshing data from ProjectionLab...");
+        Ok(self.fetch_and_store().await?.1)
+    }
 
-        let data = self.fetch_data().await?;
-
-        // Update cache
-        {
-            let mut cache = self.cached_data.write().await;
-            *cache = Some(CachedData {
-                data: data.clone(),
-                cached_at: Instant::now(),
-            });
-        }
-
-        Ok(data)
+    async fn fetch_and_store(&self) -> Result<(Arc<Value>, Arc<FullExport>)> {
+        let raw = self
+            .call_api("exportData", vec![])
+            .await
+            .context("Failed to export data from ProjectionLab")?;
+        let data = parse_export(&raw)?;
+        let (raw, data) = (Arc::new(raw), Arc::new(data));
+        *self.cached_data.write().await = Some(CachedData {
+            raw: raw.clone(),
+            data: data.clone(),
+            cached_at: Instant::now(),
+        });
+        info!("Successfully fetched data from ProjectionLab");
+        Ok((raw, data))
     }
 
     /// Invalidate the cache (call after write operations)
     pub async fn invalidate(&self) {
         debug!("Invalidating cache");
-        let mut cache = self.cached_data.write().await;
-        *cache = None;
+        *self.cached_data.write().await = None;
+    }
+
+    /// Get cache age for debugging
+    pub async fn cache_age(&self) -> Option<Duration> {
+        let cache = self.cached_data.read().await;
+        cache.as_ref().map(|c| c.cached_at.elapsed())
     }
 
     /// Wait for the browser session to be initialized (it starts in a background task).
-    /// Returns an error if it doesn't become ready within the timeout.
     async fn wait_for_browser(&self) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(BROWSER_READY_TIMEOUT_SECS);
         loop {
-            {
-                let guard = self.browser.lock().await;
-                if guard.is_some() {
-                    return Ok(());
-                }
+            if self.browser.lock().await.is_some() {
+                return Ok(());
             }
             if Instant::now() >= deadline {
                 anyhow::bail!(
@@ -109,131 +116,107 @@ impl SyncManager {
         }
     }
 
-    /// Fetch data from ProjectionLab via the browser.
-    /// Navigates to the home page first to ensure exportData runs in a consistent context.
-    async fn fetch_data(&self) -> Result<FullExport> {
+    async fn lock_browser(&self) -> Result<tokio::sync::MutexGuard<'_, Option<BrowserSession>>> {
         self.wait_for_browser().await?;
-        let mut browser_guard = self.browser.lock().await;
-        let browser = browser_guard
-            .as_mut()
-            .context("Browser session not initialized")?;
-
-        // Ensure we're on the home page — exportData may behave differently on plan pages
-        browser.navigate_to_home().await
-            .context("Failed to navigate home before export")?;
-
-        let result = browser
-            .call_plugin_api("exportData", vec![])
-            .await
-            .context("Failed to export data from ProjectionLab")?;
-
-        let export: FullExport = serde_json::from_value(result.clone())
-            .context(format!(
-                "Failed to parse exported data. Top-level keys: {:?}",
-                result.as_object().map(|o| o.keys().collect::<Vec<_>>())
-            ))?;
-
-        info!("Successfully fetched data from ProjectionLab");
-        Ok(export)
+        Ok(self.browser.lock().await)
     }
 
-    /// Update data in ProjectionLab and invalidate cache
+    /// Call a Plugin API method (read-only; does not touch the cache).
+    pub async fn call_api(&self, method: &str, args: Vec<Value>) -> Result<Value> {
+        let guard = self.lock_browser().await?;
+        let browser = guard.as_ref().context("Browser session not initialized")?;
+        browser.call_plugin_api(method, args).await
+    }
+
+    /// Run async JavaScript in the browser on whatever page is currently loaded.
+    pub async fn run_js_async(&self, script: &str) -> Result<Value> {
+        let guard = self.lock_browser().await?;
+        let browser = guard.as_ref().context("Browser session not initialized")?;
+        browser.execute_js_async(script).await
+    }
+
+    // ---- Writes (each invalidates the cache) ----
+
+    /// Replace the Current Finances document.
     ///
-    /// This is used by domain tools to push changes back to ProjectionLab
-    pub async fn update_current_finances(&self, new_finances: serde_json::Value) -> Result<()> {
-        info!("Updating current finances in ProjectionLab...");
-        self.wait_for_browser().await?;
-
-        let browser_guard = self.browser.lock().await;
-        let browser = browser_guard
-            .as_ref()
-            .context("Browser session not initialized")?;
-
-        browser
-            .call_plugin_api("restoreCurrentFinances", vec![new_finances])
+    /// Note: ProjectionLab V5 *merges* submitted accounts over the stored ones,
+    /// so omitting an account does not delete it (archive it instead).
+    pub async fn restore_current_finances(&self, current_finances: Value) -> Result<()> {
+        info!("Restoring Current Finances in ProjectionLab...");
+        self.write("restoreCurrentFinances", vec![current_finances], Map::new())
             .await
-            .context("Failed to restore current finances")?;
-
-        // Invalidate cache after write
-        drop(browser_guard);
-        self.invalidate().await;
-
-        info!("Successfully updated current finances");
-        Ok(())
+            .context("Failed to restore current finances")
     }
 
-    /// Update plans in ProjectionLab and invalidate cache
-    pub async fn update_plans(&self, new_plans: serde_json::Value) -> Result<()> {
-        info!("Updating plans in ProjectionLab...");
-        self.wait_for_browser().await?;
-
-        let browser_guard = self.browser.lock().await;
-        let browser = browser_guard
-            .as_ref()
-            .context("Browser session not initialized")?;
-
-        browser
-            .call_plugin_api("restorePlans", vec![new_plans])
+    /// Replace the full list of plans. Plans missing from the array are deleted.
+    pub async fn restore_plans(&self, plans: Value) -> Result<()> {
+        anyhow::ensure!(plans.is_array(), "restorePlans expects an array of plans");
+        info!("Restoring plans in ProjectionLab...");
+        self.write("restorePlans", vec![plans], Map::new())
             .await
-            .context("Failed to restore plans")?;
-
-        // Invalidate cache after write
-        drop(browser_guard);
-        self.invalidate().await;
-
-        info!("Successfully updated plans");
-        Ok(())
+            .context("Failed to restore plans")
     }
 
-    /// Update progress in ProjectionLab and invalidate cache
-    pub async fn update_progress(&self, new_progress: serde_json::Value) -> Result<()> {
-        info!("Updating progress in ProjectionLab...");
-        self.wait_for_browser().await?;
-
-        let browser_guard = self.browser.lock().await;
-        let browser = browser_guard
-            .as_ref()
-            .context("Browser session not initialized")?;
-
-        browser
-            .call_plugin_api("restoreProgress", vec![new_progress])
+    /// Replace the settings document.
+    pub async fn restore_settings(&self, settings: Value) -> Result<()> {
+        info!("Restoring settings in ProjectionLab...");
+        self.write("restoreSettings", vec![settings], Map::new())
             .await
-            .context("Failed to restore progress")?;
-
-        // Invalidate cache after write
-        drop(browser_guard);
-        self.invalidate().await;
-
-        info!("Successfully updated progress");
-        Ok(())
+            .context("Failed to restore settings")
     }
 
-    /// Update settings in ProjectionLab and invalidate cache
-    pub async fn update_settings(&self, new_settings: serde_json::Value) -> Result<()> {
-        info!("Updating settings in ProjectionLab...");
-        self.wait_for_browser().await?;
-
-        let browser_guard = self.browser.lock().await;
-        let browser = browser_guard
-            .as_ref()
-            .context("Browser session not initialized")?;
-
-        browser
-            .call_plugin_api("restoreSettings", vec![new_settings])
+    /// Assign fields on a Current Finances account (`updateAccount`). With
+    /// `force`, fields not already present on the account may be added.
+    pub async fn update_account(&self, account_id: &str, data: Value, force: bool) -> Result<()> {
+        let mut options = Map::new();
+        if force {
+            options.insert("force".into(), Value::Bool(true));
+        }
+        self.write("updateAccount", vec![json!(account_id), data], options)
             .await
-            .context("Failed to restore settings")?;
-
-        // Invalidate cache after write
-        drop(browser_guard);
-        self.invalidate().await;
-
-        info!("Successfully updated settings");
-        Ok(())
+            .with_context(|| format!("Failed to update account {}", account_id))
     }
 
-    /// Get cache age for debugging
-    pub async fn cache_age(&self) -> Option<Duration> {
-        let cache = self.cached_data.read().await;
-        cache.as_ref().map(|c| c.cached_at.elapsed())
+    /// Update an account's current values (`updateAccountValues`). Supported
+    /// fields: `balance` (accounts, debts), `costBasis` (accounts that track it),
+    /// `value` / `purchasePrice` (real assets). ProjectionLab records account
+    /// history automatically for these edits.
+    pub async fn update_account_values(&self, account_id: &str, values: Value) -> Result<()> {
+        let result = {
+            let guard = self.lock_browser().await?;
+            let browser = guard.as_ref().context("Browser session not initialized")?;
+            let mut params = Map::new();
+            params.insert("accountId".into(), json!(account_id));
+            params.insert("values".into(), values);
+            match browser
+                .call_plugin_api_single_object("updateAccountValues", params)
+                .await
+            {
+                Ok(_) => browser.flush_pending_saves().await,
+                Err(e) => Err(e),
+            }
+        };
+        self.invalidate().await;
+        result
+            .map(|_| ())
+            .with_context(|| format!("Failed to update values for account {}", account_id))
+    }
+
+    async fn write(&self, method: &str, args: Vec<Value>, options: Map<String, Value>) -> Result<()> {
+        let result = {
+            let guard = self.lock_browser().await?;
+            let browser = guard.as_ref().context("Browser session not initialized")?;
+            match browser
+                .call_plugin_api_with_options(method, args, options)
+                .await
+            {
+                // Only report success once ProjectionLab has persisted the change.
+                Ok(_) => browser.flush_pending_saves().await,
+                Err(e) => Err(e),
+            }
+        };
+        // Invalidate even on failure: a partial write may have happened.
+        self.invalidate().await;
+        result.map(|_| ())
     }
 }

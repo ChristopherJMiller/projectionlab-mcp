@@ -8,18 +8,18 @@ This server uses browser automation (Firefox + GeckoDriver) to interact with Pro
 
 - **Browser Automation**: Uses thirtyfour (Selenium for Rust) with Firefox to execute JavaScript API calls
 - **Secure Authentication**: Manual login via visible browser window, API key automatically retrieved
-- **Full API Coverage**: All 7 ProjectionLab Plugin API methods exposed as MCP tools
-- **HTTP Streamable Transport**: Runs as an HTTP server compatible with MCP clients
+- **Full API Coverage**: Every ProjectionLab Plugin API v2 method, plus higher-level tools for accounts, plans, events, milestones, history, and simulation results
+- **stdio Transport**: Runs as a standard stdio MCP server
 - **Nix Integration**: Fully configured flake for easy development and deployment
 
 ## Architecture
 
 ```
 MCP Client (Claude Desktop/CLI)
-  ↓ HTTP/SSE
+  ↓ stdio (JSON-RPC)
 MCP Server (this project)
   ↓ Browser Automation (thirtyfour)
-Firefox (visible, headed mode)
+Firefox (headless; visible only for login)
   ↓ JavaScript Injection
 ProjectionLab Web UI (window.projectionlabPluginAPI)
 ```
@@ -94,179 +94,88 @@ Before using this server, you must enable plugins in your ProjectionLab account:
 3. Enable "Community Plugins" support
 4. Note your API key (the server will retrieve this automatically)
 
-### 3. Start the MCP Server
+### 3. Run the MCP Server
 
-```bash
-# Using Nix
-nix run
-
-# Or with cargo
-cargo run --release
-```
-
-The server will:
-- Start on `http://127.0.0.1:8000/mcp`
-- Wait for an MCP client to connect
-- On first connection, launch Firefox and wait for you to log in
-- Automatically navigate to the plugins settings page
-- Extract and cache your API key
-- Be ready to handle tool requests
-
-### 4. Configure Your MCP Client
-
-Add this server to your MCP client configuration:
-
-#### Claude Desktop
-
-Edit `~/.config/Claude/claude_desktop_config.json` (or equivalent for your platform):
+The server speaks MCP over **stdio**. `run-mcp.sh` builds quietly and execs the binary, so it can be used directly as an MCP command:
 
 ```json
 {
   "mcpServers": {
     "projectionlab": {
-      "url": "http://127.0.0.1:8000/mcp"
+      "command": "/path/to/projectionlab-mcp/run-mcp.sh"
     }
   }
 }
 ```
 
+On first connection the server launches Firefox with a persistent profile (`~/.local/share/projectionlab-mcp/firefox-profile`). If the saved session is still valid it stays headless; otherwise a visible window opens for you to log in. It then reads your Plugin API key from the plugins settings page and is ready for tool calls.
+
+## ProjectionLab V5 data model
+
+ProjectionLab's late-2026 "V5" release reshaped its data and Plugin API. This server targets V5:
+
+- `exportData` returns `{schema: 1, exportedAt, documents: {currentFinances, plans, settings, accountHistory}}`.
+- **Current Finances** keeps every balance-sheet item in one `accounts` map, distinguished by `kind`: `account` (savings, taxable, 401k, roth-ira, hsa, crypto, …), `debt` (mortgage, auto-loan, student-loans, credit-card, …), and `real-asset` (real-estate, car, …).
+- Accounts are **archived** (`archivedOn`), not deleted. The plugin API cannot hard-delete them.
+- **History is automatic.** Editing a current value records account and net worth history. The old `progress` document and `restoreProgress` are gone.
+- Plans no longer have an `active` flag. `settings.plan.activeId` is the plan selected in the UI and `settings.plan.baselineId` is the comparison baseline.
+- Plugin API v2 adds `getAccounts` and `updateAccountValues`.
+
+Models are intentionally thin: only identity fields are typed and everything else is passed through untouched. All writes edit the raw export JSON, so fields this server doesn't know about survive round trips, and new upstream fields don't break parsing.
+
 ## Available Tools
 
-Once connected, the following MCP tools are available:
+Call `schema_help` with `topic: "topics"` for field-level docs (`v5_changes` summarizes what changed).
 
-### `update_account`
+| Area | Tools |
+|------|-------|
+| Current Finances | `accounts_list`, `accounts_get`, `accounts_create`, `accounts_update`, `accounts_update_balance`, `accounts_archive`, `accounts_unarchive`, `accounts_delete` (archives), `household_get` |
+| Real assets / debts | `starting_assets_*`, `debts_*` (list/get/create/update/delete — kind-filtered views of the account tools) |
+| Plans | `plans_list`, `plans_get`, `plans_create`, `plans_clone`, `plans_delete`, `plans_get_variables`, `plans_update_variables`, `plans_update_metadata`, `plans_get_milestones` |
+| Milestones | `milestones_create`, `milestones_update`, `milestones_delete` (built-ins can be edited/hidden, not deleted) |
+| Plan events | `expenses_*`, `income_*`, `priorities_*`, `plan_assets_*` (list/create/update/delete) |
+| Plan accounts | `plan_accounts_list`, `plan_accounts_update` (writes shared fields through to Current Finances) |
+| History | `progress_get_history` (net worth over time), `account_history`, `snapshot_net_worth` / `progress_add_data_point` (report only — V5 records history automatically) |
+| Simulation | `plans_get_simulation_results`, `plans_get_year_snapshot`, `plans_get_year_range`, `plans_get_montecarlo_results` |
+| Integration | `sync_account_balances` (batch balance updates, e.g. from Monarch Money) |
+| System | `schema_help`, `refresh_cache`, `cache_status`, `validate_api_key`, `run_js_in_browser` |
+| Raw Plugin API | `get_accounts`, `update_account`, `update_account_values`, `export_data`, `restore_current_finances`, `restore_plans`, `restore_settings` |
 
-Updates an account in Current Finances with new data.
+Notes:
 
-**Parameters:**
-- `account_id` (string, required): The ID of the account to update
-- `data` (object, required): New data for the account (e.g., `{"balance": 1000}`)
-- `force` (boolean, optional): Allow assignment of new properties
-
-**Example:**
-```json
-{
-  "account_id": "12345",
-  "data": {"balance": 50000},
-  "force": false
-}
-```
-
-### `export_data`
-
-Exports all financial data from ProjectionLab.
-
-**Parameters:** None
-
-**Returns:** Complete JSON export of all your financial data
-
-### `restore_current_finances`
-
-Replaces the Current Finances state with new data.
-
-**Parameters:**
-- `new_state` (object, required): The new Current Finances state
-
-**Warning:** This overwrites your current finances. Ensure data is well-formed.
-
-### `restore_plans`
-
-Replaces all Plans with a new set.
-
-**Parameters:**
-- `new_plans` (object, required): The new plans data
-
-**Warning:** This overwrites all your plans. Ensure data is well-formed.
-
-### `restore_progress`
-
-Replaces the Progress state with new data.
-
-**Parameters:**
-- `new_progress` (object, required): The new progress data
-
-**Warning:** This overwrites your progress tracking.
-
-### `restore_settings`
-
-Replaces Settings state with new data.
-
-**Parameters:**
-- `new_settings` (object, required): The new settings data
-
-**Warning:** This overwrites your settings.
-
-### `validate_api_key`
-
-Validates that the cached API key is still valid.
-
-**Parameters:** None
-
-**Returns:** Validation result from ProjectionLab
-
-## Usage Examples
-
-### With Claude Desktop
-
-Once configured, you can ask Claude to interact with your ProjectionLab data:
-
-```
-User: Export my current financial data from ProjectionLab
-
-Claude: [uses export_data tool]
-
-User: Update my checking account balance to $5,000
-
-Claude: [uses update_account tool with account_id and new balance]
-```
-
-### Direct API Testing
-
-You can test the server directly via HTTP:
-
-```bash
-curl -X POST http://127.0.0.1:8000/mcp/tools/list
-```
+- Balance changes go through `updateAccountValues`, so ProjectionLab records them in history.
+- `restore_plans` replaces **all** plans; any plan missing from the array is deleted. Prefer the targeted tools.
+- Simulation tools temporarily select the requested plan in the app, wait for a fresh projection, and restore the previously selected plan.
+- Monte Carlo results only exist after ProjectionLab's Chance of Success page has run them in the automated browser, so they are usually unavailable.
 
 ## Development
+
+```bash
+nix develop            # toolchain, Firefox, geckodriver
+cargo test             # unit + model tests (no network)
+cargo run --bin export-data   # dump a fresh export to debug-data/ (gitignored) and check it parses
+cargo run --bin call-tool -- plans          # quick Plugin API probes
+cargo run --bin test-tools                  # live integration test (see below)
+```
+
+`cargo test` also checks the local `debug-data/full_export.json` when present: it must parse, and the typed model must preserve every value.
+
+`test-tools` exercises the real tool handlers against your account. All create/update/delete steps happen inside a temporary `__mcp_test_<timestamp>` plan that is removed afterwards. Current Finances is only touched with a no-op value write, so no history is recorded.
+
+When ProjectionLab changes again, run `export-data` first. Parse errors report the exact JSON path that failed, e.g. `documents.plans[0].expenses.events[3].owner`.
 
 ### Project Structure
 
 ```
-projectionlab-mcp/
-├── src/
-│   ├── main.rs         # HTTP server setup and entry point
-│   ├── server.rs       # MCP ServerHandler implementation + tool definitions
-│   └── browser.rs      # Browser automation layer (thirtyfour)
-├── Cargo.toml          # Rust dependencies
-├── flake.nix           # Nix development environment
-├── rust-toolchain.toml # Rust toolchain specification
-└── README.md           # This file
+src/
+├── main.rs            # stdio MCP entry point
+├── server.rs          # tool definitions (#[tool_router])
+├── browser.rs         # Firefox/GeckoDriver session + Plugin API calls
+├── sync.rs            # export cache + Plugin API write operations
+├── resources.rs       # MCP resources
+├── models/            # thin V5 models (current finances, plans, events, history, settings)
+└── tools/             # tool handlers; tools/doc.rs holds raw-JSON edit helpers
 ```
-
-### Running in Development Mode
-
-```bash
-# Enter Nix environment (if using Nix)
-nix develop
-
-# Run with debug logging
-RUST_LOG=debug cargo run
-
-# Run tests (if any)
-cargo test
-```
-
-### Adding New Tools
-
-To add new MCP tools:
-
-1. Define the tool method in `src/server.rs` with `#[tool]` macro
-2. Use `self.get_browser()` to access the browser session
-3. Call `browser.call_plugin_api("methodName", args)` with appropriate args
-4. Handle errors and return `CallToolResult`
-
-The `#[tool_router]` and `#[tool_handler]` macros automatically register your tools.
 
 ## Troubleshooting
 

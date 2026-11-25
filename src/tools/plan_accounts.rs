@@ -1,223 +1,147 @@
-//! Handler logic for plan-level account event tools.
+//! Plan-level account settings (`plan.accounts.events`, kind "account").
 //!
-//! Plan account events reference Current Finances accounts via an `account_id`
-//! field. ProjectionLab re-derives plan account balances from Current Finances
-//! on export, so updating plan-level data alone doesn't persist. When a plan
-//! account has a linked `account_id`, we propagate overlapping fields (balance,
-//! growth rates, etc.) to the Current Finances account as well.
+//! Each plan account event links to a Current Finances account via `accountId`.
+//! A balance can live in up to three places:
+//!   1. the plan account event itself,
+//!   2. the plan's own `startingConditions.accounts[accountId]` (custom plans only),
+//!   3. the global Current Finances account.
+//!
+//! `update` writes shared fields through to all of them so simulations and the
+//! dashboard agree. Current Finances value edits go through updateAccountValues,
+//! which also records account history.
 
 use crate::sync::SyncManager;
-use rmcp::{model::*, ErrorData as McpError};
 use serde_json::{json, Map as JsonMap, Value as JsonValue};
 
-use super::accounts::merge_json_fields;
+use super::accounts::VALUE_FIELDS;
+use super::doc::{self, anyhow_err, err, ok_json, ToolResult};
 use super::params::*;
 
-/// Fields that exist on both plan AccountEvent and Current Finances StartingAccount.
-/// Updates to these fields must be propagated to the linked Current Finances account.
-const SHARED_ACCOUNT_FIELDS: &[&str] = &[
+/// Fields shared between a plan account event and its Current Finances account.
+const SHARED_ACCOUNT_FIELDS: &[&str] = &["balance", "costBasis", "name", "icon", "owner"];
+
+const SUMMARY_FIELDS: &[&str] = &[
+    "accountId",
+    "owner",
     "balance",
-    "investmentGrowthRate",
-    "investmentGrowthType",
-    "dividendRate",
-    "dividendType",
-    "liquid",
-    "withdraw",
-    "withdrawAge",
-    "isPassiveIncome",
-    "name",
-    "title",
-    "icon",
-    "color",
     "costBasis",
-    "subtitle",
+    "liquidity",
+    "withdrawAge",
+    "investmentGrowthType",
+    "investmentGrowthRate",
+    "dividendType",
+    "dividendRate",
     "yearlyFee",
     "yearlyFeeType",
-    "dividendReinvestment",
-    "dividendTaxType",
-    "dividendsArePassiveIncome",
-    "repurpose",
+    "hidden",
 ];
 
-pub async fn list(
-    sync: &SyncManager,
-    params: PlanEventsListParams,
-) -> Result<CallToolResult, McpError> {
-    let data = sync
-        .get_data()
-        .await
-        .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
-
+pub async fn list(sync: &SyncManager, params: PlanEventsListParams) -> ToolResult {
+    let data = sync.get_data().await.map_err(anyhow_err)?;
     let plan = data
-        .plans
-        .iter()
-        .find(|p| p.id == params.plan_id)
-        .ok_or_else(|| {
-            McpError::internal_error(format!("Plan not found: {}", params.plan_id), None)
-        })?;
+        .find_plan(&params.plan_id)
+        .ok_or_else(|| err(format!("Plan not found: {}", params.plan_id)))?;
+    let cf = data.current_finances();
 
     let accounts: Vec<JsonValue> = plan
         .accounts
         .events
         .iter()
-        .map(|a| {
-            json!({
-                "id": a.id,
-                "name": a.name,
-                "type": a.event_type,
-                "balance": a.balance,
-                "owner": a.owner,
-                "liquid": a.liquid,
-                "withdraw": a.withdraw,
-                "investment_growth_rate": a.investment_growth_rate,
-                "investment_growth_type": a.investment_growth_type,
-                "dividend_rate": a.dividend_rate,
-                "account_id": a.account_id,
-            })
+        .map(|e| {
+            let mut summary = e.summary(SUMMARY_FIELDS);
+            if let Some(linked) = e.get_str("accountId") {
+                if let Some(cf_account) = cf.find(linked) {
+                    summary["currentFinancesBalance"] = json!(cf_account.balance);
+                    summary["currentFinancesArchived"] = json!(cf_account.is_archived());
+                }
+                if let Some(sc) = plan.starting_conditions.find(linked) {
+                    summary["planStartingBalance"] = json!(sc.balance);
+                }
+            }
+            summary
         })
         .collect();
 
-    Ok(CallToolResult::success(vec![Content::text(
-        serde_json::to_string_pretty(&json!({
-            "plan_id": plan.id,
-            "plan_name": plan.name,
-            "total_accounts": accounts.len(),
-            "accounts": accounts,
-        }))
-        .unwrap_or_default(),
-    )]))
+    ok_json(&json!({
+        "plan_id": plan.id,
+        "plan_name": plan.name,
+        "starting_conditions_type": plan.starting_conditions_type,
+        "total_accounts": accounts.len(),
+        "accounts": accounts,
+    }))
 }
 
-pub async fn update(
-    sync: &SyncManager,
-    params: PlanEventUpdateParams,
-) -> Result<CallToolResult, McpError> {
-    let mut data = sync
-        .get_data()
-        .await
-        .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
+pub async fn update(sync: &SyncManager, params: PlanEventUpdateParams) -> ToolResult {
+    doc::reject_id_change(&params.data, &params.event_id)?;
 
-    let plan = data
-        .plans
-        .iter_mut()
-        .find(|p| p.id == params.plan_id)
-        .ok_or_else(|| {
-            McpError::internal_error(format!("Plan not found: {}", params.plan_id), None)
-        })?;
-
-    let account = plan
-        .accounts
-        .events
-        .iter_mut()
-        .find(|a| a.id == params.event_id)
-        .ok_or_else(|| {
-            McpError::internal_error(
-                format!("Plan account event not found: {}", params.event_id),
-                None,
-            )
-        })?;
-
-    // Grab the linked Current Finances account ID before mutating
-    let linked_account_id = account.account_id.clone();
-
-    // Extract shared fields that need to propagate
-    let shared_updates: JsonMap<String, JsonValue> = params
+    let shared: JsonMap<String, JsonValue> = params
         .data
         .iter()
         .filter(|(k, _)| SHARED_ACCOUNT_FIELDS.contains(&k.as_str()))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
-    // 1. Update the plan account event itself
-    merge_json_fields(account, &params.data)?;
-
-    // 2. Also update the plan's starting_conditions snapshot (used when
-    //    startingConditionsType is "custom"). Find by account_id match.
-    if let Some(ref cf_id) = linked_account_id {
-        if !shared_updates.is_empty() {
-            try_merge_starting_conditions(&mut plan.starting_conditions, cf_id, &shared_updates)?;
+    // 1 + 2: plan account event and the plan's starting-conditions snapshot.
+    let mut raw = sync.get_raw().await.map_err(anyhow_err)?;
+    let plan = doc::plan_mut(&mut raw, &params.plan_id)?;
+    let linked_id = {
+        let events = doc::section_events_mut(plan, "accounts")?;
+        let event = doc::find_by_id_mut(events, &params.event_id).ok_or_else(|| {
+            err(format!("Plan account event not found: {}", params.event_id))
+        })?;
+        doc::merge_shallow(event, &params.data)?;
+        event
+            .get("accountId")
+            .and_then(JsonValue::as_str)
+            .map(str::to_string)
+    };
+    let mut snapshot_updated = false;
+    if let (Some(linked), false) = (&linked_id, shared.is_empty()) {
+        if let Some(sc_account) = plan
+            .get_mut("startingConditions")
+            .and_then(|sc| sc.get_mut("accounts"))
+            .and_then(|a| a.get_mut(linked))
+        {
+            doc::merge_shallow(sc_account, &shared)?;
+            snapshot_updated = true;
         }
     }
+    let plans = doc::take_plans(&mut raw)?;
+    sync.restore_plans(plans).await.map_err(anyhow_err)?;
 
-    // Send updated plans in one call
-    let plans_value = serde_json::to_value(&data.plans).map_err(|e| {
-        McpError::internal_error(format!("Failed to serialize plans: {}", e), None)
-    })?;
-
-    sync.update_plans(plans_value)
-        .await
-        .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
-
-    // 3. Propagate shared fields to the global Current Finances account
-    let mut cf_updated = false;
-    if let Some(ref cf_id) = linked_account_id {
-        if !shared_updates.is_empty() {
-            // Re-fetch data since cache was invalidated by update_plans
-            let mut data = sync
-                .get_data()
-                .await
-                .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
-
-            let found = try_merge_starting_conditions(&mut data.today, cf_id, &shared_updates)?;
-
-            if found {
-                let new_finances = serde_json::to_value(&data.today).map_err(|e| {
-                    McpError::internal_error(
-                        format!("Failed to serialize finances: {}", e),
-                        None,
-                    )
-                })?;
-
-                sync.update_current_finances(new_finances)
-                    .await
-                    .map_err(|e| McpError::internal_error(format!("{:#}", e), None))?;
-
-                cf_updated = true;
+    // 3: Current Finances.
+    let mut cf_result = JsonValue::Null;
+    if let (Some(linked), false) = (&linked_id, shared.is_empty()) {
+        let data = sync.get_data().await.map_err(anyhow_err)?;
+        match data.current_finances().find(linked) {
+            None => cf_result = json!({"skipped": "linked Current Finances account not found"}),
+            Some(a) if a.is_archived() => {
+                cf_result = json!({"skipped": "linked Current Finances account is archived"})
+            }
+            Some(_) => {
+                drop(data);
+                let (values, fields): (JsonMap<_, _>, JsonMap<_, _>) = shared
+                    .into_iter()
+                    .partition(|(k, _)| VALUE_FIELDS.contains(&k.as_str()));
+                if !fields.is_empty() {
+                    sync.update_account(linked, JsonValue::Object(fields.clone()), true)
+                        .await
+                        .map_err(anyhow_err)?;
+                }
+                if !values.is_empty() {
+                    sync.update_account_values(linked, JsonValue::Object(values.clone()))
+                        .await
+                        .map_err(anyhow_err)?;
+                }
+                cf_result = json!({"account_id": linked, "values": values, "fields": fields});
             }
         }
     }
 
-    let msg = if cf_updated {
-        format!(
-            "Plan account event '{}' updated successfully (also synced to Current Finances account '{}')",
-            params.event_id,
-            linked_account_id.as_deref().unwrap_or("unknown")
-        )
-    } else {
-        format!(
-            "Plan account event '{}' updated successfully",
-            params.event_id
-        )
-    };
-
-    Ok(CallToolResult::success(vec![Content::text(msg)]))
-}
-
-/// Try to find and merge updates into the matching account within a
-/// `StartingConditions` (used for both global Current Finances and
-/// per-plan starting_conditions snapshots). Returns true if found.
-fn try_merge_starting_conditions(
-    sc: &mut crate::models::plan::StartingConditions,
-    account_id: &str,
-    updates: &JsonMap<String, JsonValue>,
-) -> Result<bool, McpError> {
-    if let Some(account) = sc
-        .savings_accounts
-        .iter_mut()
-        .find(|a| a.id == account_id)
-    {
-        merge_json_fields(account, updates)?;
-        return Ok(true);
-    }
-
-    if let Some(account) = sc
-        .investment_accounts
-        .iter_mut()
-        .find(|a| a.id == account_id)
-    {
-        merge_json_fields(account, updates)?;
-        return Ok(true);
-    }
-
-    Ok(false)
+    ok_json(&json!({
+        "message": format!("Plan account event {} updated", params.event_id),
+        "linked_account_id": linked_id,
+        "plan_starting_conditions_updated": snapshot_updated,
+        "current_finances": cf_result,
+    }))
 }

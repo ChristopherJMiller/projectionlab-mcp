@@ -1,7 +1,8 @@
 //! Schema documentation tool — returns field-level docs for ProjectionLab entity types.
 //!
 //! An LLM caller can use `schema_help` before creating/updating events to understand
-//! required fields, valid values, and type-specific variations.
+//! required fields, valid values, and type-specific variations. Field names are the
+//! camelCase names ProjectionLab uses in its V5 data model.
 
 use rmcp::model::*;
 use serde_json::json;
@@ -9,16 +10,18 @@ use serde_json::json;
 /// All topics the schema_help tool can explain.
 const TOPICS: &[&str] = &[
     "topics",
+    "v5_changes",
+    "current_finances",
+    "account",
+    "debt",
+    "real_asset",
     "date_or_milestone",
     "yearly_change",
     "expense",
     "income",
     "priority",
-    "account",
     "plan_account",
     "asset",
-    "starting_asset",
-    "debt",
     "withdrawal_strategy",
     "milestone",
 ];
@@ -26,16 +29,18 @@ const TOPICS: &[&str] = &[
 pub fn lookup(topic: &str) -> CallToolResult {
     let doc = match topic {
         "topics" => topics_index(),
+        "v5_changes" => v5_changes(),
+        "current_finances" => current_finances(),
+        "account" => account(),
+        "debt" => debt(),
+        "real_asset" | "starting_asset" => real_asset(),
         "date_or_milestone" => date_or_milestone(),
         "yearly_change" => yearly_change(),
         "expense" => expense(),
         "income" => income(),
         "priority" => priority(),
-        "account" => account(),
         "plan_account" => plan_account(),
-        "asset" => asset(),
-        "starting_asset" => starting_asset(),
-        "debt" => debt(),
+        "asset" | "plan_asset" => asset(),
         "withdrawal_strategy" => withdrawal_strategy(),
         "milestone" => milestone(),
         _ => {
@@ -56,50 +61,155 @@ fn topics_index() -> serde_json::Value {
         "available_topics": TOPICS,
         "description": "Call schema_help with any topic to get field documentation, valid values, and examples. Start here to understand what fields are needed before creating or updating entities.",
         "recommended_reading_order": [
+            "current_finances — how accounts, debts, and real assets are stored",
             "date_or_milestone — used by every event's start/end timing",
             "yearly_change — used by expenses, income, assets for growth modeling",
             "Then read the specific entity type you want to create/update"
-        ]
+        ],
+        "best_practice": "The most reliable way to create a new plan event is to list existing events of the same type (e.g. expenses_list / plans_get) and copy one as a template, changing only what you need. Unknown fields are passed through to ProjectionLab untouched."
+    })
+}
+
+fn v5_changes() -> serde_json::Value {
+    json!({
+        "description": "What changed in ProjectionLab V5 (late 2026) relative to older exports and older versions of these tools.",
+        "export_format": "exportData now returns {schema: 1, exportedAt, documents: {currentFinances, plans, settings, accountHistory}} instead of {meta, today, plans, progress, settings}.",
+        "current_finances": "savingsAccounts / investmentAccounts / debts / assets arrays were replaced by one `accounts` map keyed by id; each item has `kind` ('account' | 'debt' | 'real-asset'). Household members moved to household.people (map keyed by 'me' / 'spouse').",
+        "deleting": "Accounts cannot be deleted through the plugin API (restoreCurrentFinances merges accounts). They are archived instead via `archivedOn` (ISO date); archived items drop out of net worth but keep their history.",
+        "history": "The `progress` document and restoreProgress were removed. History is recorded automatically whenever a current value changes (updateAccountValues / updateAccount). Per-account history ships in documents.accountHistory; aggregated net worth is in the app's net-worth series (progress_get_history).",
+        "plugin_api": "Plugin API version 2 adds getAccounts and updateAccountValues({accountId, values}). validateApiKey is now synchronous.",
+        "plans": "Plans no longer have `active`, `initialized`, `simKey`, `hasNotes`, or `computedMilestones`. settings.plan.activeId is the plan selected in the UI and settings.plan.baselineId is the comparison baseline. Plan routes no longer include the plan id.",
+        "events": "Every plan event now carries `kind` (expense, income, priority, real-asset, account). Legacy fields `title`, `key`, `planPath`, `frequencyChoices`, `color`, `subtitle`, `persistent` are gone from new events. Plan accounts use `liquidity` instead of `liquid`/`withdraw`. Real-asset events use value/purchasePrice/assessedValue instead of initialValue/amount/balance.",
+        "new_event_types": "Expenses of type 'debt' (with debtId, interestRate, monthlyPayment, paymentMethod, forgiveness settings) model Current Finances debts inside a plan. Priorities gained 'roth-401k', employerMatchIsRoth, catchUpContributionsAreRoth, and mbdrDestination (mega backdoor Roth)."
+    })
+}
+
+fn current_finances() -> serde_json::Value {
+    json!({
+        "description": "Current Finances is the household's present-day balance sheet. Every item lives in one `accounts` map keyed by id, distinguished by `kind`.",
+        "kinds": {
+            "account": "Savings and investment accounts — see topic 'account'",
+            "debt": "Loans and credit — see topic 'debt'",
+            "real-asset": "Property and valuables — see topic 'real_asset'"
+        },
+        "common_fields": {
+            "id": "string — unique id (auto-generated on create)",
+            "kind": "'account' | 'debt' | 'real-asset' (inferred from type on create)",
+            "type": "type within the kind (see each kind's topic)",
+            "subtype": "optional refinement, e.g. 'inherited' or 'sep' for IRAs",
+            "name": "display name",
+            "icon": "optional Material Design icon",
+            "order": "display order within its section (auto-assigned on create)",
+            "archivedOn": "ISO date when archived (absent when active)"
+        },
+        "value_fields": "balance (accounts, debts), costBasis (taxable-style accounts), value and purchasePrice (real assets). Changing these records history; use accounts_update_balance, accounts_update, or sync_account_balances.",
+        "plan_relationship": "Plans with startingConditionsType 'default' simulate from Current Finances directly. 'custom' plans carry their own copy in plan.startingConditions. Each plan also has per-account settings in plan.accounts.events (see 'plan_account') linked by accountId."
+    })
+}
+
+fn account() -> serde_json::Value {
+    json!({
+        "description": "A Current Finances account (kind 'account'). These are lean: balances and identity only. Growth, dividends, liquidity, and withdrawal settings are per plan (see 'plan_account').",
+        "types": {
+            "savings": "Cash / checking / savings (bucket: cash)",
+            "taxable": "Taxable brokerage (bucket: taxable; tracks costBasis)",
+            "crypto": "Cryptocurrency (bucket: crypto)",
+            "401k / 403b / 457b / ira / pension": "Tax-deferred retirement (ira supports subtype 'inherited' or 'sep')",
+            "roth-401k / roth-403b / roth-457b / roth-ira / hsa / 529": "Tax-free (roth-ira supports subtype 'inherited'; roth-ira tracks costBasis = contributions)",
+            "rrsp / tfsa": "Canada",
+            "sipp / uk-pension / stock-isa / lifetime-isa": "United Kingdom",
+            "superannuation / super-nonconcessional": "Australia",
+            "kh": "Israel (keren hishtalmut)"
+        },
+        "fields": {
+            "name": "display name",
+            "type": "one of the types above",
+            "owner": "'me' | 'spouse' | 'joint' (joint is allowed for taxable)",
+            "balance": "current balance",
+            "costBasis": "taxable / roth-ira: total cost basis or contributions"
+        },
+        "example_create": {
+            "tool": "accounts_create",
+            "account_type": "taxable",
+            "data": { "name": "Brokerage", "owner": "me", "balance": 25000, "costBasis": 18000 }
+        }
+    })
+}
+
+fn debt() -> serde_json::Value {
+    json!({
+        "description": "A Current Finances debt (kind 'debt').",
+        "types": ["mortgage", "home-equity-loan", "auto-loan", "secured-loan", "student-loans", "credit-card", "personal-loan", "medical-debt", "other"],
+        "fields": {
+            "name": "display name",
+            "type": "one of the types above",
+            "owner": "'me' | 'spouse' | 'joint'",
+            "balance": "current outstanding balance",
+            "interestRate": "annual interest rate %",
+            "monthlyPayment": "monthly payment",
+            "securedByAssetId": "for mortgage / home-equity-loan / auto-loan / secured-loan: id of the real asset securing the loan (mortgage & HELOC: real-estate or land; auto-loan: vehicles)"
+        },
+        "plan_relationship": "Inside a plan, a debt's repayment is modelled by an expense of type 'debt' whose debtId points at the debt (see 'expense').",
+        "example_create": {
+            "tool": "debts_create",
+            "data": { "type": "auto-loan", "name": "Car loan", "owner": "me", "balance": 18000, "interestRate": 4.5, "monthlyPayment": 400 }
+        }
+    })
+}
+
+fn real_asset() -> serde_json::Value {
+    json!({
+        "description": "A Current Finances real asset (kind 'real-asset'): property or valuables you own today. For future purchases inside a plan see 'asset'.",
+        "types": ["real-estate", "car", "land", "motorcycle", "boat", "jewelry", "precious-metals", "furniture", "instrument", "machinery", "other"],
+        "fields": {
+            "name": "display name",
+            "type": "one of the types above (real-estate supports subtypes 'building', 'rental', 'rental-building')",
+            "value": "current market value",
+            "purchasePrice": "original purchase price"
+        },
+        "example_create": {
+            "tool": "starting_assets_create",
+            "data": { "type": "car", "name": "Family car", "value": 22000, "purchasePrice": 35000 }
+        }
     })
 }
 
 fn date_or_milestone() -> serde_json::Value {
     json!({
-        "description": "DateOrMilestone specifies when an event starts or ends. Used by every event's `start` and `end` fields.",
+        "description": "DateOrMilestone specifies when an event starts or ends. Used by every event's `start` and `end` fields (and some others, e.g. withdrawAge).",
         "fields": {
             "type": "required — 'keyword' | 'date' | 'milestone'",
             "value": "required — depends on type (see below)",
-            "modifier": "optional — 'include' | 'exclude' | numeric offset (years)"
+            "modifier": "optional — 'include' | 'exclude' (or a numeric offset in some contexts)"
         },
         "variants": {
             "keyword": {
-                "description": "Relative/symbolic dates",
                 "valid_values": [
-                    "beforeCurrentYear — before the simulation starts",
+                    "now — today / plan start",
+                    "beforeCurrentYear — already ongoing before the simulation starts",
                     "endOfPlan — end of the simulation horizon",
-                    "retirement — when the user retires (computed milestone)",
-                    "death — end of life expectancy"
+                    "never — open-ended / does not happen"
                 ],
-                "example": { "type": "keyword", "value": "beforeCurrentYear" }
+                "example": { "type": "keyword", "value": "now", "modifier": "include" }
             },
             "date": {
                 "description": "Exact calendar date (ISO format)",
                 "example": { "type": "date", "value": "2027-01-01" }
             },
             "milestone": {
-                "description": "Reference to a user-defined milestone by UUID",
-                "modifier_meaning": "'include' = on or after milestone year, 'exclude' = year after milestone",
-                "example": { "type": "milestone", "value": "abc-123-uuid", "modifier": "include" }
+                "description": "Reference to a milestone by id. Built-in ids: 'retirement', 'spouseRetirement', 'lifeExpectancy', 'spouseLifeExpectancy', 'fi'; custom milestones use their generated id.",
+                "modifier_meaning": "'include' = starting in the milestone year, 'exclude' = the year after",
+                "example": { "type": "milestone", "value": "retirement", "modifier": "include" }
             }
         },
         "common_patterns": {
-            "starts_now_ends_at_retirement": {
-                "start": { "type": "keyword", "value": "beforeCurrentYear" },
-                "end": { "type": "keyword", "value": "retirement" }
+            "now_until_retirement": {
+                "start": { "type": "keyword", "value": "now", "modifier": "include" },
+                "end": { "type": "milestone", "value": "retirement", "modifier": "exclude" }
             },
-            "starts_on_specific_date": {
+            "from_date_until_end": {
                 "start": { "type": "date", "value": "2030-06-01" },
-                "end": { "type": "keyword", "value": "endOfPlan" }
+                "end": { "type": "keyword", "value": "endOfPlan", "modifier": "include" }
             }
         }
     })
@@ -160,127 +270,108 @@ fn yearly_change() -> serde_json::Value {
     })
 }
 
+
 fn expense() -> serde_json::Value {
     json!({
-        "description": "ExpenseEvent — a spending item in a plan. Types: living-expenses, rent, travel, vacation, wedding, healthcare, education, childcare, custom, etc.",
-        "required_fields": {
-            "name": "display name",
-            "type": "expense category — 'living-expenses', 'rent', 'travel', 'vacation', 'wedding', 'healthcare', 'education', 'childcare', 'custom', etc.",
-            "title": "short title (usually same as name)",
-            "icon": "Material Design icon string (e.g., 'mdi-home', 'mdi-airplane')",
-            "amount": "numeric amount",
+        "description": "An expense event in a plan (plan.expenses.events, kind 'expense').",
+        "types": "living-expenses, rent, travel, vacation, wedding, education, healthcare, childcare, custom, debt, medicare (auto-generated), ...",
+        "fields": {
+            "name": "display name (required)",
+            "type": "expense category (required)",
+            "kind": "'expense' (filled in automatically)",
+            "icon": "Material Design icon, e.g. 'mdi-home', 'mdi-airplane'",
+            "amount": "numeric amount per frequency period",
             "amountType": "'today$' (inflation-adjusted) | '$' (nominal) | '%'",
             "owner": "'me' | 'spouse' | 'joint'",
-            "start": "DateOrMilestone — when this expense begins (see date_or_milestone topic)",
-            "end": "DateOrMilestone — when this expense ends",
+            "start": "DateOrMilestone",
+            "end": "DateOrMilestone",
             "frequency": "'monthly' | 'yearly' | 'once' | 'biweekly' | 'semi-monthly' | 'quarterly' | 'semi-annually'",
-            "frequencyChoices": "boolean (usually true)",
-            "yearlyChange": "YearlyChange — how the amount grows (see yearly_change topic)",
+            "yearlyChange": "YearlyChange — how the amount grows",
             "spendingType": "'essential' | 'discretionary'",
-            "planPath": "'expenses' (always this value)",
-            "key": "numeric key for ordering (use Date.now() timestamp)"
+            "hidden": "boolean — hide from charts"
         },
         "optional_fields": {
-            "repeat": "boolean — whether the expense repeats at intervals",
-            "repeatInterval": "number of intervals between repeats",
-            "repeatIntervalType": "'yearly' — unit for repeat",
-            "repeatScaler": "multiplier for repeat interval",
-            "repeatEnd": "DateOrMilestone — when repeating stops",
-            "fundWithAccount": "boolean — fund from a specific account"
+            "repeat / repeatInterval / repeatIntervalType / repeatScaler / repeatEnd": "repeat the expense every N years",
+            "fundWithAccount": "boolean — pay from a specific account",
+            "taxDeductible / itemized": "education and similar deductible expenses",
+            "switchToMarried": "wedding: switch filing status"
         },
-        "auto_generated_fields": {
-            "id": "auto-generated if not provided (format: exp_<timestamp>)"
+        "debt_type_fields": {
+            "description": "type 'debt' models repayment of a Current Finances debt inside the plan",
+            "debtId": "id of the Current Finances debt",
+            "subtype": "the debt's type, e.g. 'student-loans', 'mortgage'",
+            "interestRate / interestType ('simple' | 'compound') / compounding ('monthly' | 'yearly')": "loan terms",
+            "monthlyPayment / monthlyPaymentType": "payment",
+            "paymentMethod": "'financed' | 'pay-in-full'",
+            "downPayment / downPaymentType": "for new debts",
+            "effectiveDate": "DateOrMilestone — when these terms apply",
+            "hasForgiveness / forgiveAt": "loan forgiveness"
         },
         "example": {
             "name": "Vacation",
             "type": "vacation",
-            "title": "Vacation",
             "icon": "mdi-airplane",
             "amount": 5000,
             "amountType": "today$",
             "owner": "joint",
-            "start": { "type": "keyword", "value": "beforeCurrentYear" },
-            "end": { "type": "keyword", "value": "endOfPlan" },
+            "start": { "type": "keyword", "value": "now", "modifier": "include" },
+            "end": { "type": "keyword", "value": "endOfPlan", "modifier": "include" },
             "frequency": "yearly",
-            "frequencyChoices": true,
-            "yearlyChange": { "type": "match-inflation", "amount": 0, "limit": 0, "limitEnabled": false, "limitType": "%" },
-            "spendingType": "discretionary",
-            "planPath": "expenses",
-            "key": 1700000000000.0
+            "yearlyChange": { "type": "match-inflation", "amount": 0, "amountType": "%", "limit": 0, "limitEnabled": false, "limitType": "%" },
+            "spendingType": "discretionary"
         }
     })
 }
 
 fn income() -> serde_json::Value {
     json!({
-        "description": "IncomeEvent — an income stream in a plan. The `type` field determines which optional fields are relevant.",
+        "description": "An income event in a plan (plan.income.events, kind 'income'). `type` determines which optional fields apply.",
         "types": {
-            "salary": "W-2 employment income. Supports pension and part-time fields.",
-            "rsu": "Restricted stock units. Supports routeToAccounts.",
-            "other": "Catch-all: rental income, side income, etc. Supports isDividendIncome, isPassiveIncome, selfEmployment, wage flags."
+            "salary": "Employment income. Supports pension and part-time fields.",
+            "rsu": "Restricted stock units. Supports routeToAccounts and repeat schedules.",
+            "other": "Rental, side, or other income. Supports isDividendIncome, isPassiveIncome, selfEmployment, wage flags."
         },
-        "required_fields": {
-            "name": "display name",
-            "type": "'salary' | 'rsu' | 'other'",
-            "title": "short title",
-            "icon": "Material Design icon (e.g., 'mdi-briefcase', 'mdi-chart-line')",
-            "amount": "numeric amount per frequency period",
+        "fields": {
+            "name": "display name (required)",
+            "type": "'salary' | 'rsu' | 'other' (required)",
+            "icon": "Material Design icon",
+            "amount": "amount per frequency period",
             "amountType": "'today$' | '$' | '%'",
             "owner": "'me' | 'spouse'",
             "start": "DateOrMilestone",
             "end": "DateOrMilestone",
-            "frequency": "'monthly' | 'yearly' | 'biweekly' | 'semi-monthly' | 'quarterly' | 'semi-annually'",
-            "frequencyChoices": "boolean (usually true)",
-            "yearlyChange": "YearlyChange — raise/growth pattern",
-            "taxExempt": "boolean — is this income tax-exempt?",
-            "taxWithholding": "boolean — enable tax withholding?",
-            "withhold": "number — withholding percentage (0-100)",
-            "planPath": "'income' (always this value)",
-            "key": "numeric ordering key"
+            "frequency": "'monthly' | 'yearly' | 'biweekly' | 'semi-monthly' | 'quarterly' | 'semi-annually' | 'once'",
+            "yearlyChange": "YearlyChange — raises",
+            "taxExempt": "boolean",
+            "taxCharacter": "'wage' | 'selfEmployment' | ... — how the income is taxed",
+            "withholdingMode": "'auto' | 'fixed' | 'none'",
+            "withholdingRate": "number — % withheld when withholdingMode is 'fixed'",
+            "routeToAccounts": "string[] — account ids to deposit into",
+            "preventOverflow": "boolean"
         },
         "salary_specific_fields": {
-            "hasPension": "boolean — does this job have a pension?",
-            "pensionContribution": "number — employee contribution amount",
-            "pensionContributionType": "'$' | '%'",
-            "contribsReduceTaxableIncome": "boolean",
-            "pensionPayoutsStart": "DateOrMilestone — when pension payments begin",
-            "pensionPayoutsEnd": "DateOrMilestone — when pension payments end",
-            "pensionPayoutAmount": "number — annual payout",
-            "pensionPayoutRate": "number — payout as % of salary",
-            "pensionPayoutType": "'amount' | 'rate'",
-            "pensionPayoutsAreTaxFree": "boolean",
-            "goPartTime": "boolean — transition to part-time?",
-            "partTimeStart": "DateOrMilestone",
-            "partTimeEnd": "DateOrMilestone",
-            "partTimeRate": "number — fraction of full-time (0.0-1.0)"
-        },
-        "rsu_specific_fields": {
-            "routeToAccounts": "string[] — account IDs to route vested RSUs into"
+            "hasPension / pensionContribution / pensionContributionType / contribsReduceTaxableIncome": "pension contributions",
+            "pensionPayoutsStart / pensionPayoutsEnd / pensionPayoutAmount / pensionPayoutRate / pensionPayoutType / pensionPayoutsAreTaxFree": "pension payouts",
+            "goPartTime / partTimeStart / partTimeEnd / partTimeRate": "part-time transition (rate 0.0-1.0)"
         },
         "other_specific_fields": {
-            "isDividendIncome": "boolean — treated as dividend income for tax",
-            "isPassiveIncome": "boolean — passive income flag",
-            "selfEmployment": "boolean — subject to self-employment tax",
-            "wage": "boolean — treated as wage income"
+            "isDividendIncome / isPassiveIncome / selfEmployment / wage": "tax treatment flags"
         },
+        "legacy_fields": "Older events may still carry taxWithholding / withhold; ProjectionLab keeps them alongside the newer withholdingMode / withholdingRate.",
         "example_salary": {
             "name": "Software Engineer",
             "type": "salary",
-            "title": "Software Engineer",
             "icon": "mdi-briefcase",
             "amount": 150000,
             "amountType": "today$",
             "owner": "me",
-            "start": { "type": "keyword", "value": "beforeCurrentYear" },
-            "end": { "type": "keyword", "value": "retirement" },
+            "start": { "type": "keyword", "value": "now", "modifier": "include" },
+            "end": { "type": "milestone", "value": "retirement", "modifier": "exclude" },
             "frequency": "yearly",
-            "frequencyChoices": true,
-            "yearlyChange": { "type": "inflation+", "amount": 2.0, "limit": 0, "limitEnabled": false, "limitType": "%" },
+            "yearlyChange": { "type": "inflation+", "amount": 2.0, "amountType": "%", "limit": 0, "limitEnabled": false, "limitType": "%" },
             "taxExempt": false,
-            "taxWithholding": true,
-            "withhold": 25.0,
-            "planPath": "income",
-            "key": 1700000000000.0,
+            "taxCharacter": "wage",
+            "withholdingMode": "auto",
             "hasPension": false
         }
     })
@@ -288,345 +379,133 @@ fn income() -> serde_json::Value {
 
 fn priority() -> serde_json::Value {
     json!({
-        "description": "PriorityEvent — a savings goal or contribution strategy. The `type` field determines which fields are relevant and which account it targets.",
+        "description": "A priority (savings goal or contribution strategy) in a plan (plan.priorities.events, kind 'priority'). `type` matches the target account type.",
         "types": {
-            "401k": "401(k) contribution — targets a retirement account, has employer match and contribution limits",
-            "roth-401k": "Roth 401(k) contribution — same fields as 401k",
-            "403b": "403(b) contribution — same fields as 401k",
-            "roth-ira": "Roth IRA contribution — has amount, frequency",
-            "ira": "Traditional IRA contribution — has amount, frequency",
-            "taxable": "Taxable brokerage contribution — has amount, frequency, desiredContribution",
-            "savings": "Savings goal — has mode ('target'/'contribute'), tapFund, tapRate",
-            "hsa": "HSA contribution — has amount, frequency",
-            "529": "529 plan contribution — has amount, frequency"
+            "401k / 403b / 457b": "Employer plan contributions with employer match and limits",
+            "roth-401k / roth-403b / roth-457b": "Roth employer plan; supports mbdrDestination (mega backdoor Roth)",
+            "ira / roth-ira / hsa / 529": "Individual contributions (amount, frequency)",
+            "taxable": "Taxable investing (amount, frequency, desiredContribution)",
+            "savings": "Savings goal (mode, tapFund, tapRate)"
         },
-        "required_fields": {
-            "name": "display name",
-            "type": "one of the types listed above",
-            "title": "short title",
-            "subtitle": "description text",
+        "fields": {
+            "name": "display name (required)",
+            "type": "one of the types above (required)",
             "icon": "Material Design icon",
-            "color": "hex color (e.g., '#4CAF50')",
-            "goalIntent": "'goal' | 'contribute'",
+            "goalIntent": "'contribute' | 'invest' | 'maintain' | 'target' ...",
             "owner": "'me' | 'spouse'",
-            "accountId": "UUID of the target account this priority contributes to",
+            "accountId": "id of the target Current Finances account",
             "start": "DateOrMilestone",
             "end": "DateOrMilestone",
-            "persistent": "boolean — persists after goal is met?",
-            "planPath": "'priorities'",
-            "key": "numeric ordering key"
+            "hidden": "boolean"
         },
-        "401k_specific_fields": {
-            "contribution": "number — contribution amount per period",
-            "contributionType": "'$' | '%' — of salary",
-            "contributionLimit": "number — annual contribution cap",
-            "contributionsAreFixed": "boolean — fixed vs % of salary",
-            "employerMatch": "number — employer match percentage",
-            "employerMatchType": "'$' | '%'",
-            "employerMatchLimit": "number — cap on employer match",
-            "reduceEmployerMatch": "boolean — reduce match in part-time",
-            "incomeStreamId": "UUID — which income stream the % is based on",
-            "yearlyLimit": "number — IRS annual limit",
-            "yearlyLimit$Type": "'today$' | '$'",
-            "yearlyLimitType": "'individual' | 'combined'",
-            "country": "'US' | 'CA' | 'UK' — affects contribution rules"
+        "employer_plan_fields": {
+            "contribution / contributionType ('$' | '%') / contributionsAreFixed / contributionLimit": "employee contributions",
+            "employerMatch / employerMatchType / employerMatchLimit / reduceEmployerMatch": "employer match",
+            "employerMatchIsRoth": "boolean — employer match goes to Roth",
+            "catchUpContributionsAreRoth": "boolean — catch-up contributions are Roth",
+            "mbdrDestination": "roth-401k: where mega backdoor Roth contributions go",
+            "incomeStreamId": "id of the salary the % is based on",
+            "yearlyLimit / yearlyLimit$Type / yearlyLimitType": "annual limit settings"
         },
-        "taxable_specific_fields": {
-            "amount": "number — contribution amount",
-            "amountType": "'today$' | '$' | '%'",
-            "frequency": "'monthly' | 'yearly' | 'once' | etc.",
-            "desiredContribution": "'fixed' | 'max'"
+        "taxable_and_ira_fields": {
+            "amount / amountType / frequency": "contribution",
+            "desiredContribution": "'fixed' | 'max' | '%-remaining' ..."
         },
-        "savings_specific_fields": {
+        "savings_fields": {
             "mode": "'target' | 'contribute'",
-            "amount": "number — target amount or contribution",
-            "amountType": "'today$' | '$' | '%'",
-            "frequency": "'monthly' | 'yearly'",
-            "tapFund": "boolean — allow withdrawals from this fund",
-            "tapRate": "number — max withdrawal rate %"
+            "amount / amountType / frequency": "target or contribution",
+            "tapFund / tapRate": "allow drawing from this fund"
         },
         "example_401k": {
-            "name": "401k Contribution",
+            "name": "401k",
             "type": "401k",
-            "title": "401k",
-            "subtitle": "Max out 401k",
             "icon": "mdi-piggy-bank",
-            "color": "#4CAF50",
             "goalIntent": "contribute",
             "owner": "me",
-            "accountId": "some-401k-account-uuid",
-            "start": { "type": "keyword", "value": "beforeCurrentYear" },
-            "end": { "type": "keyword", "value": "retirement" },
-            "persistent": true,
+            "accountId": "<401k account id>",
+            "start": { "type": "keyword", "value": "now", "modifier": "include" },
+            "end": { "type": "milestone", "value": "retirement", "modifier": "exclude" },
             "contribution": 23500,
             "contributionType": "$",
             "contributionsAreFixed": true,
-            "employerMatch": 50.0,
+            "employerMatch": 50,
             "employerMatchType": "%",
-            "employerMatchLimit": 6.0,
-            "incomeStreamId": "salary-income-uuid",
-            "yearlyLimit": 23500,
-            "yearlyLimit$Type": "today$",
-            "yearlyLimitType": "individual",
-            "country": "US",
-            "planPath": "priorities",
-            "key": 1700000000000.0
-        }
-    })
-}
-
-fn account() -> serde_json::Value {
-    json!({
-        "description": "StartingAccount — a financial account in Current Finances. The `type` field determines which optional fields apply. These are the user's current real accounts.",
-        "note": "For plan-level account overrides, see the 'plan_account' topic instead.",
-        "types": {
-            "savings": "Savings/checking account — simplest type, just balance + growth",
-            "taxable": "Taxable brokerage — adds costBasis, yearlyFee, dividendReinvestment",
-            "401k": "401(k) — adds EWAge, EWPenaltyRate, hasEWPenalty, rmdType, country",
-            "roth-401k": "Roth 401(k) — same retirement fields as 401k",
-            "roth-ira": "Roth IRA — same retirement fields plus withdrawContribsFree",
-            "ira": "Traditional IRA — same retirement fields as 401k",
-            "403b": "403(b) — same retirement fields as 401k",
-            "457": "457 plan — same retirement fields as 401k",
-            "hsa": "HSA — same retirement fields as 401k",
-            "529": "529 plan — education savings",
-            "pension": "Pension account",
-            "crypto": "Cryptocurrency account",
-            "other": "Other account type"
-        },
-        "required_fields": {
-            "name": "display name",
-            "type": "account type (see above)",
-            "title": "short title",
-            "icon": "Material Design icon",
-            "color": "hex color",
-            "owner": "'me' | 'spouse' | 'joint'",
-            "balance": "current balance (number)",
-            "liquid": "boolean — can this be used for expenses?",
-            "withdraw": "boolean — include in withdrawal strategy?",
-            "withdrawAge": "DateOrMilestone — when withdrawals can begin",
-            "investmentGrowthRate": "number — annual growth rate %",
-            "investmentGrowthType": "'fixed' | 'plan' — use fixed rate or plan assumptions",
-            "dividendRate": "number — annual dividend yield %",
-            "dividendType": "'plan' | 'none'",
-            "isPassiveIncome": "boolean — are dividends treated as passive income?"
-        },
-        "taxable_specific_fields": {
-            "costBasis": "number — original cost basis for capital gains",
-            "yearlyFee": "number — annual expense ratio/fee",
-            "yearlyFeeType": "'$' | '%'",
-            "dividendReinvestment": "boolean — auto-reinvest dividends?",
-            "dividendTaxType": "'fixed' | 'plan'",
-            "dividendsArePassiveIncome": "boolean"
-        },
-        "retirement_specific_fields": {
-            "country": "'US' | 'CA' | 'UK'",
-            "EWAge": "number — early withdrawal penalty ends at this age",
-            "hasEWPenalty": "boolean — subject to early withdrawal penalty?",
-            "EWPenaltyRate": "number — penalty rate % (e.g., 10)",
-            "rmdType": "'standard' | 'inherited' — required minimum distribution rules",
-            "withdrawContribsFree": "boolean — Roth: can withdraw contributions penalty-free (Roth IRA only)"
-        },
-        "auto_generated_fields": {
-            "id": "auto-generated if not provided"
+            "employerMatchLimit": 6,
+            "employerMatchIsRoth": false,
+            "incomeStreamId": "<salary income id>"
         }
     })
 }
 
 fn plan_account() -> serde_json::Value {
     json!({
-        "description": "AccountEvent — a plan-level override for an account. These appear inside a plan's `accounts.events` array and let each plan customize growth rates, balances, or withdrawal settings for the same underlying account.",
-        "fields_same_as": "Same field set as StartingAccount (see 'account' topic) — the plan-level version can override any field from the Current Finances account.",
-        "key_fields_to_override": {
-            "balance": "override the account's starting balance for this plan",
-            "investmentGrowthRate": "override growth rate for this plan's scenario",
-            "investmentGrowthType": "'fixed' | 'plan'",
-            "withdraw": "whether to include in this plan's withdrawal strategy",
-            "withdrawAge": "DateOrMilestone — override withdrawal start age"
-        },
-        "note": "Use plan_accounts_update to change these. The accountId field links back to the Current Finances account."
-    })
-}
-
-fn asset() -> serde_json::Value {
-    let mut doc = serde_json::Map::new();
-    doc.insert("description".into(), json!("AssetEvent — a planned asset purchase/ownership in a plan (future home, car, etc.). These are FUTURE planned purchases, not current assets (see 'starting_asset' for current)."));
-    doc.insert("types".into(), json!({
-        "real-estate": "Home/property — has rental income, HOA, improvement, management fields",
-        "car": "Vehicle — typically depreciates",
-        "furniture": "Furniture/appliances",
-        "other": "Custom asset type"
-    }));
-    doc.insert("required_fields".into(), json!({
-        "name": "display name",
-        "type": "'real-estate' | 'car' | 'furniture' | 'other'",
-        "title": "short title",
-        "icon": "Material Design icon",
-        "owner": "'me' | 'spouse' | 'joint'",
-        "start": "DateOrMilestone — when you acquire the asset",
-        "end": "DateOrMilestone — when you sell/dispose",
-        "initialValue": "number — purchase price",
-        "initialValueType": "'today$' | '$'",
-        "amount": "number — same as initialValue typically",
-        "amountType": "'today$' | '$'",
-        "yearlyChange": "YearlyChange — appreciation/depreciation",
-        "planPath": "'assets'",
-        "key": "numeric ordering key"
-    }));
-    doc.insert("payment_method_fields".into(), json!({
-        "paymentMethod": "'pay-in-full' | 'financed' — determines which loan fields matter",
-        "note": "When 'financed', all the loan fields below are used. When 'pay-in-full', loan fields are ignored."
-    }));
-    doc.insert("loan_fields".into(), json!({
-        "balance": "number — loan balance (usually initialValue - downPayment)",
-        "balanceType": "'today$' | '$'",
-        "downPayment": "number — down payment amount",
-        "downPaymentType": "'today$' | '$'",
-        "monthlyPayment": "number — monthly loan payment",
-        "monthlyPaymentType": "'today$' | '$'",
-        "interestRate": "number — annual interest rate %",
-        "interestType": "'fixed' | 'variable'",
-        "compounding": "'monthly' | 'yearly'",
-        "excludeLoanFromLNW": "boolean — exclude loan from liquid net worth?"
-    }));
-    doc.insert("cost_fields".into(), json!({
-        "brokersFee": "number — % fee on sale",
-        "taxRate": "number — property tax rate",
-        "taxRateType": "'$' | '%'",
-        "insuranceRate": "number — insurance cost",
-        "insuranceRateType": "'$' | '%'",
-        "maintenanceRate": "number — maintenance cost",
-        "maintenanceRateType": "'$' | '%'"
-    }));
-    doc.insert("real_estate_specific_fields".into(), json!({
-        "initialBuildingValue": "number — building portion (for depreciation)",
-        "initialBuildingValueType": "'today$' | '$'",
-        "classification": "'residential' | 'commercial'",
-        "generateIncome": "boolean — rental property?",
-        "percentRented": "number — 0-100",
-        "incomeRate": "number — rental yield",
-        "incomeRateType": "'$' | '%'",
-        "isPassiveIncome": "boolean",
-        "cancelRent": "boolean — buying cancels a rent expense?",
-        "improvementRate": "number — capital improvements %",
-        "improvementRateType": "'$' | '%'",
-        "managementRate": "number — property management fee %",
-        "managementRateType": "'$' | '%'",
-        "monthlyHOA": "number — monthly HOA fee",
-        "estimateQBI": "boolean — estimate qualified business income?",
-        "selfEmployment": "boolean — self-employment tax?",
-        "estimateRentalDeductions": "boolean"
-    }));
-    doc.insert("repeat_fields".into(), json!({
-        "repeat": "boolean — buy this asset repeatedly?",
-        "repeatInterval": "number — years between purchases",
-        "repeatIntervalType": "'yearly'",
-        "repeatEnd": "DateOrMilestone — stop repeating",
-        "repeatKeepLast": "boolean — keep the last purchase"
-    }));
-    doc.insert("example_home_purchase".into(), asset_example());
-    serde_json::Value::Object(doc)
-}
-
-fn asset_example() -> serde_json::Value {
-    json!({
-        "name": "Dream Home",
-        "type": "real-estate",
-        "title": "Dream Home",
-        "icon": "mdi-home",
-        "owner": "joint",
-        "start": { "type": "date", "value": "2028-01-01" },
-        "end": { "type": "keyword", "value": "endOfPlan" },
-        "initialValue": 600000,
-        "initialValueType": "today$",
-        "amount": 600000,
-        "amountType": "today$",
-        "yearlyChange": { "type": "appreciate", "amount": 3.0, "limit": 0, "limitEnabled": false, "limitType": "%" },
-        "paymentMethod": "financed",
-        "balance": 480000,
-        "balanceType": "today$",
-        "downPayment": 120000,
-        "downPaymentType": "today$",
-        "monthlyPayment": 3200,
-        "monthlyPaymentType": "$",
-        "interestRate": 6.5,
-        "interestType": "fixed",
-        "compounding": "monthly",
-        "excludeLoanFromLNW": false,
-        "brokersFee": 6.0,
-        "taxRate": 1.2,
-        "taxRateType": "%",
-        "insuranceRate": 0.5,
-        "insuranceRateType": "%",
-        "maintenanceRate": 1.0,
-        "maintenanceRateType": "%",
-        "cancelRent": true,
-        "repeat": false,
-        "planPath": "assets",
-        "key": 1700000000000.0
-    })
-}
-
-fn starting_asset() -> serde_json::Value {
-    json!({
-        "description": "StartingAsset — a current asset in Current Finances (car you own now, home you own now, etc.). These are CURRENT real assets, not future planned purchases (see 'asset' for planned).",
-        "types": "'car' | 'real-estate' | 'furniture' | 'other'",
-        "required_fields": {
-            "name": "display name",
-            "type": "asset type string",
-            "title": "short title",
-            "icon": "Material Design icon",
-            "color": "hex color",
-            "owner": "'me' | 'spouse' | 'joint'",
-            "balance": "current market value (number)",
-            "initialValue": "original purchase price (number)"
-        },
-        "auto_generated_fields": {
-            "id": "auto-generated if not provided"
-        },
-        "example": {
-            "name": "Tesla Model 3",
-            "type": "car",
-            "title": "Tesla Model 3",
-            "icon": "mdi-car",
-            "color": "#FF5722",
-            "owner": "me",
-            "balance": 25000.0,
-            "initialValue": 45000.0
+        "description": "Per-plan settings for a Current Finances account (plan.accounts.events, kind 'account'), linked by accountId. Edit with plan_accounts_update.",
+        "fields": {
+            "accountId": "id of the linked Current Finances account",
+            "balance / costBasis": "starting values; plan_accounts_update writes these through to Current Finances (and the plan's own startingConditions for custom plans)",
+            "owner / name / icon": "also written through to Current Finances",
+            "investmentGrowthType": "'plan' (use plan assumptions) | 'fixed' | 'none'",
+            "investmentGrowthRate": "annual growth % when fixed",
+            "dividendType": "'plan' | 'fixed' | 'none'",
+            "dividendRate": "dividend yield % when fixed",
+            "isPassiveIncome": "boolean — count growth/dividends as passive income",
+            "liquidity": "true (liquid now) or a DateOrMilestone when funds become accessible",
+            "withdrawAge": "DateOrMilestone — when withdrawals may begin",
+            "yearlyFee / yearlyFeeType": "account fees",
+            "EWAge / hasEWPenalty / EWPenaltyRate": "early-withdrawal penalty rules (retirement accounts)",
+            "rmdType": "required minimum distribution rules",
+            "withdrawContribsFree": "roth-ira: contributions can be withdrawn penalty-free",
+            "repurpose": "savings: repurpose after goals",
+            "hidden": "boolean"
         }
     })
 }
 
-fn debt() -> serde_json::Value {
+fn asset() -> serde_json::Value {
     json!({
-        "description": "DebtAccount — a debt/liability in Current Finances (mortgage, auto loan, student loan, credit card).",
-        "types": "'mortgage' | 'auto-loan' | 'student-loan' | 'personal-loan' | 'credit-card' | 'other'",
-        "required_fields": {
-            "name": "display name",
-            "type": "debt type string",
-            "title": "short title",
+        "description": "A planned real-asset purchase in a plan (plan.assets.events, kind 'real-asset'), e.g. a future home or car. For assets you own today see 'real_asset'.",
+        "types": "real-estate, car, furniture, land, boat, other, ...",
+        "fields": {
+            "name": "display name (required)",
+            "type": "asset type (required)",
             "icon": "Material Design icon",
-            "color": "hex color",
             "owner": "'me' | 'spouse' | 'joint'",
-            "balance": "current outstanding balance (number)"
+            "start": "DateOrMilestone — purchase date",
+            "end": "DateOrMilestone — sale/disposal",
+            "value / valueType": "market value at purchase",
+            "purchasePrice / purchasePriceType": "price paid",
+            "assessedValue / assessedValueType / assessedValueGrowthRateLimit / assessedValueGrowthRateLimitType": "for property tax",
+            "yearlyChange": "YearlyChange — appreciation/depreciation",
+            "sellIfNeeded": "boolean — may be sold to cover shortfalls",
+            "fundWithAccounts": "string[] — accounts that fund the purchase"
         },
-        "optional_fields": {
-            "interestRate": "number — annual interest rate %",
-            "monthlyPayment": "number — monthly payment amount"
+        "financing_fields": {
+            "paymentMethod": "'financed' | 'pay-in-full'",
+            "downPayment / downPaymentType": "down payment",
+            "monthlyPayment / monthlyPaymentType": "loan payment",
+            "interestRate / interestType / compounding": "loan terms"
         },
-        "auto_generated_fields": {
-            "id": "auto-generated if not provided"
-        },
-        "example": {
-            "name": "Auto Loan",
-            "type": "auto-loan",
-            "title": "Auto Loan",
-            "icon": "mdi-car",
-            "color": "#F44336",
-            "owner": "me",
-            "balance": 18000.0,
-            "interestRate": 4.5,
-            "monthlyPayment": 400.0
+        "cost_fields": "brokersFee, taxRate/taxRateType, insuranceRate/insuranceRateType, maintenanceRate/maintenanceRateType, monthlyHOA/monthlyHOAType",
+        "real_estate_fields": "initialBuildingValue/initialBuildingValueType, classification, generateIncome, percentRented, incomeRate/incomeRateType, isPassiveIncome, cancelRent, improvementRate/improvementRateType, managementRate/managementRateType, estimateQBI, selfEmployment, estimateRentalDeductions",
+        "repeat_fields": "repeat, repeatInterval, repeatIntervalType, repeatScaler, repeatEnd, repeatKeepLast",
+        "example_home_purchase": {
+            "name": "Home",
+            "type": "real-estate",
+            "icon": "mdi-home",
+            "owner": "joint",
+            "start": { "type": "date", "value": "2028-06-01" },
+            "end": { "type": "keyword", "value": "endOfPlan", "modifier": "include" },
+            "value": 600000, "valueType": "today$",
+            "purchasePrice": 600000, "purchasePriceType": "today$",
+            "yearlyChange": { "type": "appreciate", "amount": 3.0, "amountType": "%", "limit": 0, "limitEnabled": false, "limitType": "%" },
+            "paymentMethod": "financed",
+            "downPayment": 120000, "downPaymentType": "today$",
+            "monthlyPayment": 3200, "monthlyPaymentType": "$",
+            "interestRate": 6.5, "interestType": "compound", "compounding": "monthly",
+            "taxRate": 1.0, "taxRateType": "%",
+            "insuranceRate": 0.5, "insuranceRateType": "%",
+            "maintenanceRate": 1.0, "maintenanceRateType": "%",
+            "cancelRent": true
         }
     })
 }
@@ -702,46 +581,54 @@ fn withdrawal_strategy() -> serde_json::Value {
 
 fn milestone() -> serde_json::Value {
     json!({
-        "description": "Milestone — a named point in time that events can reference. Milestones are defined per-plan and can be used in DateOrMilestone fields.",
-        "required_fields": {
-            "name": "display name (e.g., 'Early Retirement', 'Kids Graduate')",
+        "description": "A milestone in a plan (plan.milestones). Milestones can be referenced from DateOrMilestone fields.",
+        "built_in": "Every plan has built-in milestones such as 'retirement', 'spouseRetirement', 'lifeExpectancy', 'spouseLifeExpectancy', and 'fi'. They have no `removable` flag: they can be edited (e.g. change retirement criteria) or hidden, but not deleted.",
+        "fields": {
+            "name": "display name (required)",
             "icon": "Material Design icon",
-            "color": "hex color",
-            "criteria": "array of criterion objects that define when the milestone occurs"
+            "color": "color name or hex",
+            "criteria": "array of criteria (required); multiple criteria are combined with each criterion's `logic`",
+            "hidden": "boolean",
+            "removable": "true for custom milestones (set automatically on create)",
+            "createdOn": "ISO date (set automatically on create)"
         },
-        "criterion_types": {
-            "year": {
-                "description": "Milestone occurs at a specific calendar year",
-                "example": { "type": "year", "value": 2035 }
-            },
-            "age": {
-                "description": "Milestone occurs at a specific age",
-                "example": { "type": "age", "value": 55, "owner": "me" }
-            },
-            "milestone": {
-                "description": "Relative to another milestone",
-                "example": { "type": "milestone", "value": "other-milestone-uuid", "operator": "+", "offset": 5 }
-            },
-            "account": {
-                "description": "When an account reaches a target value",
-                "example": { "type": "account", "value": 1000000, "refId": "account-uuid", "operator": ">=" }
-            },
-            "loan": {
-                "description": "When a loan is paid off",
-                "example": { "type": "loan", "refId": "asset-event-uuid" }
-            }
+        "criterion_fields": {
+            "type": "'year' | 'age' | 'milestone' | 'account' | 'loan' | 'liquidNetWorth' | 'investableAssets' | ...",
+            "value": "number or id depending on type",
+            "operator": "comparison, e.g. '>=' for value thresholds",
+            "valueType": "'today$' | '$' for money thresholds",
+            "refId": "account / loan / milestone id the criterion refers to",
+            "modifier": "offset or include/exclude",
+            "precision / years / logic / removable": "optional refinements"
         },
-        "auto_generated_fields": {
-            "id": "auto-generated if not provided (format: ms_<timestamp>)"
+        "examples": {
+            "year": { "type": "year", "value": 2035 },
+            "age": { "type": "age", "value": 55 },
+            "net_worth_target": { "type": "liquidNetWorth", "value": 2000000, "operator": ">=", "valueType": "today$" },
+            "account_target": { "type": "account", "refId": "<account id>", "value": 1000000, "operator": ">=" },
+            "loan_paid_off": { "type": "loan", "refId": "<debt or asset event id>" },
+            "after_milestone": { "type": "milestone", "value": "retirement", "modifier": 5 }
         },
-        "note": "Computed milestones (like 'Retirement') are auto-generated by ProjectionLab and cannot be created/modified directly.",
         "example": {
             "name": "Financial Independence",
             "icon": "mdi-flag-checkered",
-            "color": "#4CAF50",
-            "criteria": [
-                { "type": "account", "value": 2000000, "refId": "total-investments-uuid", "operator": ">=" }
-            ]
+            "color": "green",
+            "criteria": [{ "type": "liquidNetWorth", "value": 2000000, "operator": ">=", "valueType": "today$" }]
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_topic_resolves() {
+        for topic in TOPICS {
+            let result = lookup(topic);
+            let text = &result.content[0].as_text().unwrap().text;
+            assert!(!text.starts_with("Unknown topic"), "topic {} not handled", topic);
+            serde_json::from_str::<serde_json::Value>(text).expect("topic returns JSON");
+        }
+    }
 }

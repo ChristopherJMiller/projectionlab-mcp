@@ -12,6 +12,33 @@ const LOGIN_WAIT_TIMEOUT_SECS: u64 = 300; // 5 minutes for user to log in
 const GECKODRIVER_URL: &str = "http://localhost:4444";
 const GECKODRIVER_PORT: u16 = 4444;
 
+/// Ask ProjectionLab's `appDataSaving` store to persist pending changes and
+/// wait until nothing is left unsaved.
+const FLUSH_PENDING_SAVES_JS: &str = r#"
+    const callback = arguments[arguments.length - 1];
+    (async () => {
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const app = document.querySelector('#app');
+        const pinia = app && app.__vue_app__ && app.__vue_app__.config.globalProperties.$pinia;
+        const saving = pinia && pinia._s.get('appDataSaving');
+        if (!saving) return { skipped: "appDataSaving store not found" };
+        const started = Date.now();
+        // Edits mark documents dirty via watchers; let them run first.
+        await sleep(100);
+        while (saving.hasUnsavedChanges) {
+            if (saving.saveError) throw new Error('ProjectionLab failed to save: ' + saving.saveError);
+            await saving.savePendingChanges();
+            if (!saving.hasUnsavedChanges) break;
+            if (Date.now() - started > 30000) {
+                throw new Error('Timed out waiting for ProjectionLab to save (pending: ' + Object.keys(saving.dirtyDocuments || {}).join(', ') + ')');
+            }
+            await sleep(250);
+        }
+        if (saving.saveError) throw new Error('ProjectionLab failed to save: ' + saving.saveError);
+        return { saved: true, ms: Date.now() - started };
+    })().then(r => callback(r), e => callback({"__error": (e && e.message) || String(e)}));
+"#;
+
 /// Returns the path to the persistent Firefox profile directory.
 /// Session cookies and login state survive between launches.
 fn profile_dir() -> std::path::PathBuf {
@@ -353,34 +380,80 @@ impl BrowserSession {
             .context("API key not initialized")
     }
 
-    /// Executes a ProjectionLab Plugin API call via JavaScript
-    pub async fn call_plugin_api(
+    /// Executes a ProjectionLab Plugin API call via JavaScript.
+    ///
+    /// Most methods take positional arguments followed by an options object
+    /// (`{ key }`), e.g. `exportData({ key })`, `restorePlans(plans, { key })`.
+    pub async fn call_plugin_api(&self, method: &str, args: Vec<Value>) -> Result<Value> {
+        self.call_plugin_api_with_options(method, args, serde_json::Map::new())
+            .await
+    }
+
+    /// Call a Plugin API method whose trailing options object carries more than
+    /// the key, e.g. `updateAccount(id, data, { key, force })`.
+    pub async fn call_plugin_api_with_options(
         &self,
         method: &str,
-        args: Vec<Value>,
+        mut args: Vec<Value>,
+        mut options: serde_json::Map<String, Value>,
     ) -> Result<Value> {
-        let api_key = self.api_key()?;
+        options.insert("key".into(), Value::String(self.api_key()?.to_string()));
+        args.push(Value::Object(options));
+        self.invoke_plugin_api(method, args).await
+    }
 
-        // Build the JavaScript call
-        let args_with_key = {
-            let mut all_args = args;
-            // Add API key as last argument with {key: "..."} format
-            all_args.push(serde_json::json!({ "key": api_key }));
-            all_args
-        };
+    /// Call a Plugin API method that takes a single parameter object which
+    /// must itself contain the key, e.g. `updateAccountValues({ accountId, values, key })`.
+    pub async fn call_plugin_api_single_object(
+        &self,
+        method: &str,
+        mut params: serde_json::Map<String, Value>,
+    ) -> Result<Value> {
+        params.insert("key".into(), Value::String(self.api_key()?.to_string()));
+        self.invoke_plugin_api(method, vec![Value::Object(params)])
+            .await
+    }
 
-        let args_json = serde_json::to_string(&args_with_key)?;
+    async fn invoke_plugin_api(&self, method: &str, args: Vec<Value>) -> Result<Value> {
+        // The arguments are embedded as a JSON *string* and parsed with the
+        // page's own `window.JSON`. WebDriver runs scripts in a sandbox whose
+        // object literals have a different Object.prototype, and ProjectionLab
+        // V5 rejects anything that isn't a plain object of the page's realm
+        // ("Account values must be an object", "Failed to admit plan document").
+        let args_json = serde_json::to_string(&serde_json::to_string(&args)?)?;
+        let method_json = serde_json::to_string(method)?;
 
-        // Use execute_async for Promise-returning API methods.
+        // Promise.resolve().then(...) handles both async methods and synchronous
+        // ones (e.g. validateApiKey, which returns undefined or throws).
         // The callback is injected as the last argument by WebDriver.
         let script = format!(
             r#"
             const callback = arguments[arguments.length - 1];
-            window.projectionlabPluginAPI.{method}(...{args})
-                .then(result => callback(result))
-                .catch(err => callback({{"__error": err.message || String(err)}}));
+            const method = {method};
+            const started = Date.now();
+            (function attempt() {{
+                const api = window.projectionlabPluginAPI;
+                if (!api) {{
+                    // The app exposes the API shortly after load; wait briefly.
+                    if (Date.now() - started < 20000) {{
+                        setTimeout(attempt, 100);
+                        return;
+                    }}
+                    callback({{"__error": "window.projectionlabPluginAPI is not available. Are plugins enabled in ProjectionLab settings?"}});
+                    return;
+                }}
+                if (typeof api[method] !== 'function') {{
+                    callback({{"__error": "Plugin API method not found: " + method + ". Available: " + Object.keys(api).join(', ')}});
+                    return;
+                }}
+                const args = window.JSON.parse({args});
+                Promise.resolve()
+                    .then(() => api[method](...args))
+                    .then(result => callback(result === undefined ? null : result))
+                    .catch(err => callback({{"__error": (err && err.message) || String(err)}}));
+            }})();
             "#,
-            method = method,
+            method = method_json,
             args = args_json
         );
 
@@ -397,6 +470,17 @@ impl BrowserSession {
         }
 
         Ok(value)
+    }
+
+    /// Wait until ProjectionLab has saved all pending changes to its backend.
+    ///
+    /// Plugin API writes update the app's in-memory state immediately but the
+    /// app persists them asynchronously. Without this, closing the browser (or
+    /// a crash) right after a write can silently lose it.
+    pub async fn flush_pending_saves(&self) -> Result<Value> {
+        self.execute_js_async(FLUSH_PENDING_SAVES_JS)
+            .await
+            .context("ProjectionLab did not confirm the save")
     }
 
     /// Navigate the browser to a path within ProjectionLab (e.g., "/plan/abc123").
@@ -472,6 +556,14 @@ impl BrowserSession {
     /// Gracefully shut down: quit the WebDriver session (closes Firefox), then kill GeckoDriver.
     pub async fn shutdown(&mut self) {
         info!("Shutting down browser session...");
+
+        // Don't lose edits ProjectionLab hasn't persisted yet.
+        if self.driver.is_some() && self.api_key.is_some() {
+            match self.flush_pending_saves().await {
+                Ok(v) => info!("Pending saves flushed: {}", v),
+                Err(e) => warn!("Could not confirm pending saves before shutdown: {:#}", e),
+            }
+        }
 
         // Quit the WebDriver session — this closes the Firefox window
         if let Some(driver) = self.driver.take() {
