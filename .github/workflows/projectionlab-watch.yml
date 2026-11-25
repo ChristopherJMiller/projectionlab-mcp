@@ -1,0 +1,71 @@
+# Watch ProjectionLab for new releases.
+#
+# ProjectionLab publishes https://app.projectionlab.com/version-registry.json
+# (no login needed), listing each app version, its document schema versions,
+# and whether it has breaking changes. When a version newer than the one in
+# compat/projectionlab.json appears, open an issue so the server can be
+# re-verified before tools start failing.
+name: ProjectionLab version watch
+
+on:
+  schedule:
+    - cron: "17 13 * * *" # daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare registry with baseline
+        id: compare
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://app.projectionlab.com/version-registry.json -o registry.json
+          baseline=$(jq -r '.appVersion' compat/projectionlab.json)
+          latest=$(jq -r 'keys | sort_by(split(".") | map(tonumber? // 0)) | last' registry.json)
+          echo "baseline=$baseline latest=$latest"
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          newer=$(jq -r --arg b "$baseline" '
+            def v: split(".") | map(tonumber? // 0);
+            [keys[] | select(v > ($b | v))] | sort_by(v) | join(" ")' registry.json)
+          echo "newer=$newer" >> "$GITHUB_OUTPUT"
+          {
+            echo "ProjectionLab has released version(s) newer than this server's baseline (\`$baseline\`):"
+            echo
+            for v in $newer; do
+              jq -r --arg v "$v" '"- **\($v)**" + (if .[$v].hasBreakingChanges then " — marked as having **breaking changes**" else "" end) + "\n  - schemas: `\(.[$v].schemas | tojson)`"' registry.json
+            done
+            echo
+            echo "Baseline schemas: \`$(jq -c .schemas compat/projectionlab.json)\`"
+            echo
+            echo "### Checklist"
+            echo "- [ ] \`cargo run --bin drift-check\` — review errors, warnings, new routes/methods, and export field changes"
+            echo "- [ ] \`cargo run --bin export-data\` and \`cargo test\` — the export must parse and round-trip"
+            echo "- [ ] Update models/tools/schema_help for anything that changed; consider exposing new features"
+            echo "- [ ] \`cargo run --bin test-tools\` — live integration test"
+            echo "- [ ] \`cargo run --bin drift-check -- --update-baseline\`, review the diff, commit"
+            echo
+            echo "See CLAUDE.md → *Keeping up with ProjectionLab*."
+          } > body.md
+
+      - name: Open issue
+        if: steps.compare.outputs.newer != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+        run: |
+          set -euo pipefail
+          title="ProjectionLab ${LATEST} released — verify MCP server"
+          existing=$(gh issue list --state open --search "in:title \"$title\"" --json title --jq "map(select(.title == \"$title\")) | length")
+          if [ "$existing" = "0" ]; then
+            gh issue create --title "$title" --body-file body.md
+          else
+            echo "Issue already open: $title"
+          fi

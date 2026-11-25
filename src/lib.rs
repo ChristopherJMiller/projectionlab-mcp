@@ -2,6 +2,7 @@
 // This allows tests and examples to access the internal modules
 
 pub mod browser;
+pub mod compat;
 pub mod models;
 pub mod resources;
 pub mod server;

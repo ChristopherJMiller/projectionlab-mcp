@@ -15,6 +15,10 @@ path = "src/bin/call_tool.rs"
 name = "test-tools"
 path = "src/bin/test_tools.rs"
 
+[[bin]]
+name = "drift-check"
+path = "src/bin/drift_check.rs"
+
 [dependencies]
 # MCP server framework with stdio transport
 rmcp = { version = "0.8", features = [

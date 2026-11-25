@@ -17,7 +17,7 @@ use rmcp::{
 use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Main MCP server for ProjectionLab integration
 #[derive(Clone)]
@@ -697,6 +697,14 @@ impl ProjectionLabServer {
         }
     }
 
+    #[tool(description = "Check that ProjectionLab still matches what this server expects — Plugin API methods/version, export and document schema versions, and the app internals used for simulations, history, and saving — and report drift since the server's baseline: newer ProjectionLab releases, new app routes (features), new Plugin API methods, and added/removed export fields. Run this first if tools start failing.")]
+    async fn compatibility_check(&self) -> Result<CallToolResult, McpError> {
+        let report = crate::compat::run(&self.sync_manager)
+            .await
+            .map_err(anyhow_err)?;
+        ok_json(&serde_json::to_value(&report).map_err(err)?)
+    }
+
     #[tool(description = "Validate that the cached Plugin API key is still valid")]
     async fn validate_api_key(&self) -> Result<CallToolResult, McpError> {
         self.sync_manager
@@ -732,9 +740,9 @@ History: net_worth_history, account_history\n\
 Simulation: plans_get_simulation_results, plans_get_year_snapshot, plans_get_year_range, plans_get_montecarlo_results\n\
 Integration: sync_account_balances\n\
 Schema: schema_help (topic='topics' lists all)\n\
-System: refresh_cache, cache_status, validate_api_key, run_js_in_browser\n\
+System: compatibility_check, refresh_cache, cache_status, validate_api_key, run_js_in_browser\n\
 Raw Plugin API: get_accounts, update_account, update_account_values, export_data, restore_current_finances, restore_plans, restore_settings\n\n\
-The server launches Firefox on first connection. Session persists between restarts.";
+If tools fail unexpectedly, run compatibility_check: it reports which ProjectionLab surface changed. The server launches Firefox on first connection; the session persists between restarts.";
 
 #[tool_handler]
 impl ServerHandler for ProjectionLabServer {
@@ -787,9 +795,13 @@ impl ServerHandler for ProjectionLabServer {
         info!("Initializing ProjectionLab MCP Server...");
 
         let browser = self.browser.clone();
+        let sync = self.sync_manager.clone();
         tokio::spawn(async move {
-            let mut guard = browser.lock().await;
-            if guard.is_none() {
+            {
+                let mut guard = browser.lock().await;
+                if guard.is_some() {
+                    return;
+                }
                 info!("Creating browser session in background...");
                 match BrowserSession::new().await {
                     Ok(session) => {
@@ -798,8 +810,26 @@ impl ServerHandler for ProjectionLabServer {
                     }
                     Err(e) => {
                         error!("Failed to initialize browser session: {}", e);
+                        return;
                     }
                 }
+            }
+            // Surface ProjectionLab changes early rather than as confusing tool failures.
+            match crate::compat::run(&sync).await {
+                Ok(report) if report.status == "broken" => error!(
+                    "ProjectionLab compatibility check FAILED (run the compatibility_check tool): {:?}",
+                    report.errors
+                ),
+                Ok(report) if report.status == "drift" => warn!(
+                    "ProjectionLab has changed since the server baseline {} (app {:?}, latest {:?}); warnings: {:?}; new features: {}",
+                    report.baseline_app_version,
+                    report.app_version,
+                    report.latest_registry_version,
+                    report.warnings,
+                    report.new_features.len()
+                ),
+                Ok(_) => info!("ProjectionLab compatibility check passed"),
+                Err(e) => warn!("Could not run ProjectionLab compatibility check: {:#}", e),
             }
         });
 

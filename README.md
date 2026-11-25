@@ -142,7 +142,7 @@ Call `schema_help` with `topic: "topics"` for field-level docs (`v5_changes` sum
 | History | `net_worth_history`, `account_history` (ProjectionLab records history automatically when values change) |
 | Simulation | `plans_get_simulation_results`, `plans_get_year_snapshot`, `plans_get_year_range`, `plans_get_montecarlo_results` |
 | Integration | `sync_account_balances` (batch balance updates, e.g. from Monarch Money) |
-| System | `schema_help`, `refresh_cache`, `cache_status`, `validate_api_key`, `run_js_in_browser` |
+| System | `compatibility_check`, `schema_help`, `refresh_cache`, `cache_status`, `validate_api_key`, `run_js_in_browser` |
 | Raw Plugin API | `get_accounts`, `update_account`, `update_account_values`, `export_data`, `restore_current_finances`, `restore_plans`, `restore_settings` |
 
 Notes:
@@ -168,6 +168,16 @@ cargo run --bin test-tools                  # live integration test (see below)
 
 When ProjectionLab changes again, run `export-data` first. Parse errors report the exact JSON path that failed, e.g. `documents.plans[0].expenses.events[3].owner`.
 
+### Keeping up with ProjectionLab
+
+ProjectionLab changes its data model and internals without notice, so the server checks itself:
+
+- **Version watch**: a daily GitHub Action reads ProjectionLab's public `version-registry.json` and opens an issue when a version newer than `compat/projectionlab.json` ships. The issue includes the breaking-change flag and schema versions.
+- **`compatibility_check`**: runs automatically at startup (logged) and is available as a tool. It verifies the Plugin API, document schemas, and the app internals the server relies on, and reports drift: newer versions, new app routes (features), new Plugin API methods, and changed export fields.
+- **`cargo run --bin drift-check`**: the same report from the command line. Add `-- --update-baseline` to accept the current app as the new baseline. The baseline stores structure only (field names, routes, versions), never your data.
+
+See `CLAUDE.md` for the full update workflow and live-testing rules.
+
 ### Project Structure
 
 ```
@@ -177,6 +187,7 @@ src/
 ├── browser.rs         # Firefox/GeckoDriver session + Plugin API calls
 ├── sync.rs            # export cache + Plugin API write operations
 ├── resources.rs       # MCP resources
+├── compat.rs          # compatibility check + drift detection (baseline: compat/projectionlab.json)
 ├── models/            # thin V5 models (current finances, plans, events, history, settings)
 └── tools/             # tool handlers; tools/doc.rs holds raw-JSON edit helpers
 ```

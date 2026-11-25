@@ -128,6 +128,12 @@ impl SyncManager {
         browser.call_plugin_api(method, args).await
     }
 
+    /// The raw `exportData` result without parsing or caching (for diagnostics,
+    /// so a parse failure can still be inspected).
+    pub async fn export_unparsed(&self) -> Result<Value> {
+        self.call_api("exportData", vec![]).await
+    }
+
     /// Run async JavaScript in the browser on whatever page is currently loaded.
     pub async fn run_js_async(&self, script: &str) -> Result<Value> {
         let guard = self.lock_browser().await?;

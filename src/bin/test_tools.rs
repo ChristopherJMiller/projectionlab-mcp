@@ -98,7 +98,21 @@ async fn cleanup_test_plans(sync: &SyncManager) -> Result<()> {
 }
 
 async fn run(sync: &SyncManager) -> Result<()> {
-    step!("0. Export parses");
+    step!("0. Compatibility check");
+    let report = projectionlab_mcp::compat::run(sync).await?;
+    eprintln!(
+        "  status={} app={:?} baseline={} warnings={} new_features={}",
+        report.status,
+        report.app_version,
+        report.baseline_app_version,
+        report.warnings.len(),
+        report.new_features.len()
+    );
+    if report.status == "broken" {
+        bail!("ProjectionLab surfaces the server needs have changed: {:#?}", report.errors);
+    }
+
+    step!("0a. Export parses");
     let data = sync.refresh().await?;
     eprintln!(
         "  plans={} cf_accounts={} history_accounts={}",
